@@ -1,0 +1,16 @@
+# build output
+*.exe
+*.dll
+*.obj
+*.o
+*.a
+*.lib
+
+# build tree
+build/
+out/
+
+# tooling scratch
+tmp/
+.cache/
+__pycache__/

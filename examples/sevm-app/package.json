@@ -1,0 +1,18 @@
+{
+  "name": "sevm-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SEVM demo app — Vue 3 SPA + Express-shaped router + SQLite",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "mbjs -m src/server.js"
+  },
+  "dependencies": {
+    "express": "^0.1.0",
+    "fs": "^0.1.0",
+    "mochinode": "^0.1.0",
+    "sqlite": "^0.1.0"
+  },
+  "license": "MIT"
+}

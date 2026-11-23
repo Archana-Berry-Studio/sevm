@@ -1,0 +1,24 @@
+{
+  "name": "sevm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SEVM \u2014 SQLite \u00b7 Express.js \u00b7 Vue.js on the MochiBerry engine",
+  "type": "module",
+  "main": "examples/sevm-app/src/server.js",
+  "scripts": {
+    "start": "mbjs -m examples/sevm-app/src/server.js"
+  },
+  "dependencies": {
+    "dynalib": "^0.1.0",
+    "events": "^0.1.0",
+    "express": "^0.1.0",
+    "fs": "^0.1.0",
+    "mochinode": "^0.1.0",
+    "net": "^0.1.0",
+    "sqlite": "^0.1.0"
+  },
+  "engines": {
+    "mochiberry": ">= 5.4"
+  },
+  "license": "MIT"
+}

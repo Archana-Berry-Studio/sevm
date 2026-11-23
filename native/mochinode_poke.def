@@ -1,0 +1,4 @@
+LIBRARY mochinode_poke.dll
+EXPORTS
+    mbjs_init_module
+    mbjs_init_module_mochinode_poke=mbjs_init_module

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEVM · MochiBerry + SQLite + Vue</title>
+<script src="/vue.global.prod.js"></script>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#30363d; --fg:#e6edf3;
+          --mut:#8b949e; --acc:#3fb950; --berry:#da3633; }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--fg);
+         font-family: ui-monospace, Consolas, monospace; padding: 2rem; }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: .25rem; }
+  h1 span { color: var(--berry); }
+  .sub { color: var(--mut); font-size: .85rem; margin-bottom: 1.5rem; }
+  .card { background: var(--card); border: 1px solid var(--line);
+          border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+  .row { display: flex; gap: .5rem; margin-bottom: .75rem; flex-wrap: wrap; }
+  input[type=text] { flex: 1 1 160px; min-width: 0; background: var(--bg); border: 1px solid var(--line);
+          color: var(--fg); border-radius: 6px; padding: .45rem .6rem;
+          font-family: inherit; }
+  button { background: var(--acc); color: #04260a; border: 0; border-radius: 6px;
+          padding: .45rem .9rem; font-family: inherit; font-weight: 700;
+          cursor: pointer; flex: 0 0 auto; }
+  button.ghost { background: transparent; color: var(--mut);
+          border: 1px solid var(--line); }
+  ul { list-style: none; padding: 0; }
+  li { display: flex; align-items: center; gap: .6rem; padding: .45rem 0;
+          border-bottom: 1px solid var(--line); font-size: .9rem; }
+  li:last-child { border-bottom: 0; }
+  li.done span.title { text-decoration: line-through; color: var(--mut); }
+  .id { color: var(--mut); min-width: 2.2em; }
+  .meta { color: var(--mut); font-size: .78rem; margin-top: .5rem; }
+  .badge { display:inline-block; background: var(--card); border:1px solid var(--line);
+          border-radius: 99px; padding: .1rem .6rem; font-size: .72rem;
+          color: var(--mut); margin-right: .35rem; }
+</style>
+</head>
+<body>
+<div id="app" class="wrap">
+  <h1>SEVM <span>·</span> MochiBerry + SQLite + Vue</h1>
+  <div class="sub">
+    <span class="badge">engine: {{ health.engine }}</span>
+    <span class="badge">sqlite: {{ health.sqlite }}</span>
+    <span class="badge">items: {{ items.length }}</span>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <input type="text" v-model="newTitle" placeholder="tambah item…"
+             @keyup.enter="add">
+      <button @click="add">Tambah</button>
+      <button class="ghost" @click="refresh">Refresh</button>
+    </div>
+    <ul>
+      <li v-for="it in items" :key="it.id" :class="{ done: it.done }">
+        <span class="id">#{{ it.id }}</span>
+        <span class="title">{{ it.title }}</span>
+      </li>
+      <li v-if="!items.length"><span class="sub">kosong.</span></li>
+    </ul>
+    <div class="meta">served by MochiBerry engine · data live dari SQLite</div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, onMounted } = Vue;
+
+createApp({
+  setup() {
+    const items = ref([]);
+    const health = ref({ engine: '…', sqlite: '…' });
+    const newTitle = ref('');
+
+    async function refresh() {
+      const r = await fetch('/api/items');
+      const j = await r.json();
+      items.value = j.items;
+    }
+    async function loadHealth() {
+      health.value = await (await fetch('/api/health')).json();
+    }
+    async function add() {
+      const t = newTitle.value.trim();
+      if (!t) return;
+      await fetch('/api/items', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: t }),
+      });
+      newTitle.value = '';
+      await refresh();
+    }
+
+    onMounted(() => { refresh(); loadHealth(); });
+    return { items, health, newTitle, refresh, add };
+  },
+}).mount('#app');
+</script>
+</body>
+</html>
