@@ -931,17 +931,17 @@ static MBJSModuleDef *lean_module_loader(MBJSContext *ctx, const char *name,
   {
     const char *baked = lean_bake_lookup(name);
     const char *target = baked ? baked : name;
-    if (baked && d >= 1)
-      fprintf(stderr, "[bake] %s -> %s\\n", name, baked);
     m = mbjs_module_loader(ctx, target, opaque, attributes);
-  }
-  if (d >= 1) {
-    if (d >= 2) {
-      char pe[192];
-      lean_pe_info(name, pe, sizeof pe);
-      fprintf(stderr, "%s (%s)\\n", pe, m ? "ok" : "FAILED");
-    } else {
-      fprintf(stderr, "%s\\n", m ? "ok" : "FAILED");
+    if (d >= 1) {
+      fprintf(stderr, "%s", m ? "ok" : "FAILED");
+      if (baked)
+        fprintf(stderr, "  [bake: %s]", baked);
+      if (d >= 2) {
+        char pe[192];
+        lean_pe_info(target, pe, sizeof pe);
+        fprintf(stderr, "  (%s)", pe);
+      }
+      fprintf(stderr, "\\n");
     }
   }
   return m;
