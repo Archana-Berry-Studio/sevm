@@ -286,7 +286,69 @@ function bytecodeFromC(source) {
     return bytes;
 }
 
+/* ---- incremental compile cache --------------------------------------
+ *
+ * mbjsc is invoked once per module, and every invocation also re-compiles
+ * the module's static dependency tree.  Re-running the whole pipeline for a
+ * one-line change was therefore needlessly slow.  The cache keys the
+ * bytecode on (source + module name + compiler stamp), so only modules that
+ * actually changed are handed to the compiler again.
+ */
+/* mbjsc flags for the AOT build.
+ *   -s -s   strip the embedded source text and the debug info from the
+ *           bytecode.  The source is only kept for stack traces; for a
+ *           release AOT binary it is dead weight: the C output of a single
+ *           module drops from 394 KB to 103 KB (-74%) and the embedded
+ *           bytecode shrinks proportionally.
+ *   -O10    (default) the stripper optimisation level.
+ */
+const COMPILE_FLAGS = ['-s'];
+
+const CACHE = 'E:/sevm/build_ex/lean/cache';
+let cacheHits = 0;
+let cacheMisses = 0;
+
+function fnv(text) {
+    let h1 = 0x811c9dc5 >>> 0;
+    let h2 = 0x01000193 >>> 0;
+    for (let i = 0; i < text.length; i++) {
+        const c = text.charCodeAt(i);
+        h1 = Math.imul(h1 ^ c, 16777619) >>> 0;
+        h2 = Math.imul(h2 ^ c, 2654435761) >>> 0;
+    }
+    return h1.toString(16) + '-' + h2.toString(16) + '-' + text.length.toString(16);
+}
+
+function compilerStamp() {
+    let size = 0;
+    try {
+        const st = os.stat(MBJSC)[0];
+        if (st) size = Number(st.size || 0);
+    } catch (e) { /* ignore */ }
+    return 'mbjsc-v29:' + size;
+}
+
+function writeBytes(path, bytes) {
+    const fd = os.open(String(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC);
+    if (fd < 0) throw new Error('cannot write ' + path);
+    let off = 0;
+    while (off < bytes.length) {
+        const n = os.write(fd, bytes.buffer, bytes.byteOffset + off,
+                           Math.min(65536, bytes.length - off));
+        if (!n || n < 0) break;
+        off += n;
+    }
+    os.close(fd);
+}
+
 function compileModule(source, moduleName, tag) {
+    const key = fnv(source + '\n@@' + moduleName + '\n@@' + compilerStamp() +
+                         '\n@@' + COMPILE_FLAGS.join(' '));
+    const cacheFile = join(CACHE, key + '.mbc');
+    if (fileExists(cacheFile)) {
+        cacheHits++;
+        return readBytes(cacheFile);
+    }
     const srcPath = join(WORK, 'src_' + tag + '.js');
     const cPath = join(WORK, 'mod_' + tag + '.c');
     writeText(srcPath, source);
@@ -294,13 +356,17 @@ function compileModule(source, moduleName, tag) {
        directory, using the current working directory as the base.  The
        canonical names are relative to ROOT ('node_modules/...'), so the
        compiler has to run from ROOT. */
-    const cmd = 'cd /d ' + q(ROOT) + ' && ' + q(MBJSC) + ' -e -m -n ' + q(moduleName) +
+    const cmd = 'cd /d ' + q(ROOT) + ' && ' + q(MBJSC) + ' -e ' +
+                COMPILE_FLAGS.join(' ') + ' -m -n ' + q(moduleName) +
                 ' -o ' + q(cPath) + ' ' + q(srcPath);
     const r = exec(cmd);
     if (r.code !== 0) {
         throw new Error('mbjsc failed for ' + moduleName + '\n' + r.stdout);
     }
-    return bytecodeFromC(readText(cPath));
+    const bytes = bytecodeFromC(readText(cPath));
+    writeBytes(cacheFile, bytes);
+    cacheMisses++;
+    return bytes;
 }
 
 /* ------------------------------------------------------------------ */
@@ -331,11 +397,206 @@ function cString(s) {
     return out + '"';
 }
 
+/* ------------------------------------------------------------------ */
+/* MochiBake                                                            */
+/* ------------------------------------------------------------------ */
+/* MochiBake is the internal organ that bakes the native plugins a program
+ * actually calls into the bundle, so the result is a small monolith that
+ * runs without any external source file.
+ *
+ * The compiler's view of a DLL is its PE export/import table.  The
+ * programmer's intent is read straight from the JavaScript: every
+ * loadNative()/require() of a .dll and every dynalib(path, 'symbol') call
+ * is a declaration of "this program needs this".  Nothing is guessed and
+ * nothing is bundled blindly.
+ *
+ * Rule:
+ *   - a DLL that lives inside the project is baked into the binary;
+ *   - a system DLL (C:/Windows/...) is left to the OS loader: the
+ *     essential base components stay pulled, they are just not copied;
+ *   - a DLL nobody calls is not baked at all.
+ */
+function peInfo(bytes) {
+    const u16 = (o) => bytes[o] | (bytes[o + 1] << 8);
+    const u32 = (o) => (bytes[o] | (bytes[o + 1] << 8) |
+                        (bytes[o + 2] << 16) | (bytes[o + 3] << 24)) >>> 0;
+    const str = (off) => {
+        let e = off, s = '';
+        while (e < bytes.length && bytes[e] !== 0) {
+            s += String.fromCharCode(bytes[e]);
+            e++;
+        }
+        return s;
+    };
+    if (bytes.length < 0x40) return null;
+    const peoff = u32(0x3c);
+    if (peoff + 4 + 20 + 0x38 > bytes.length) return null;
+    const nsec = u16(peoff + 6);
+    const optsize = u16(peoff + 20);
+    const opt = peoff + 24;
+    const magic = u16(opt);
+    const dd = opt + (magic === 0x20b ? 0x70 : 0x60);
+    const secs = [];
+    const secBase = opt + optsize;
+    for (let i = 0; i < nsec; i++) {
+        const s = secBase + i * 40;
+        secs.push({ va: u32(s + 12), vsz: u32(s + 8),
+                    rsz: u32(s + 16), raw: u32(s + 20) });
+    }
+    const rva2off = (rva) => {
+        for (const s of secs) {
+            const span = s.vsz > s.rsz ? s.vsz : s.rsz;
+            if (rva >= s.va && rva < s.va + span) return rva - s.va + s.raw;
+        }
+        return -1;
+    };
+    const exports = [];
+    const expRva = dd + 8 <= bytes.length ? u32(dd) : 0;
+    if (expRva) {
+        const e = rva2off(expRva);
+        if (e >= 0 && e + 40 <= bytes.length) {
+            const nnames = u32(e + 24), anames = u32(e + 32);
+            const no = rva2off(anames);
+            for (let i = 0; i < nnames && no >= 0; i++) {
+                const n = str(rva2off(u32(no + i * 4)));
+                if (n) exports.push(n);
+            }
+        }
+    }
+    const imports = [];
+    const impRva = u32(dd + 8);
+    if (impRva) {
+        let d = rva2off(impRva);
+        while (d >= 0 && d + 20 <= bytes.length) {
+            const nameRva = u32(d + 12);
+            if (nameRva === 0 && u32(d + 16) === 0) break;
+            const nm = str(rva2off(nameRva));
+            if (nm) imports.push(nm);
+            d += 20;
+        }
+    }
+    return { machine: u16(peoff + 4), imageSize: u32(opt + 0x38),
+             exports: exports, imports: imports };
+}
+
+function stripJsComments(src) {
+    return String(src)
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+}
+
+function baseName(path) {
+    const s = String(path).replace(/\\/g, '/');
+    const i = s.lastIndexOf('/');
+    return i < 0 ? s : s.slice(i + 1);
+}
+
+function nativeCandidates(spec, importer) {
+    const s = String(spec).replace(/\\/g, '/');
+    const hasExt = /\.(dll|so|dylib|lbrct|exe)$/i.test(s);
+    const exts = hasExt ? [s] : [s + '.dll', s + '.so', s + '.dylib', s + '.lbrct'];
+    const bases = [ROOT + '/mochi_modules/', ROOT + '/node_modules/', dirname(importer) + '/'];
+    for (const cand of exts) {
+        if (/^[A-Za-z]:\//.test(cand)) {
+            const st = os.stat(cand);
+            if (st && st[0]) return norm(cand);
+            continue;
+        }
+        for (const b of bases) {
+            const path = norm(b + cand);
+            if (fileExists(path)) return path;
+        }
+    }
+    return null;
+}
+
+function scanNativeUses(files) {
+    const uses = new Map();
+    const note = (path, symbol) => {
+        if (!path) return;
+        let e = uses.get(path);
+        if (!e) {
+            e = { path: path, name: baseName(path), symbols: new Set() };
+            uses.set(path, e);
+        }
+        if (symbol) e.symbols.add(symbol);
+    };
+    for (const f of files) {
+        const code = stripJsComments(readText(f));
+        let m;
+
+        /* 1. direct native specifiers: loadNative / require / import /
+              resolveNative — with or without the file extension. */
+        const reSpec = /\b(?:loadNative|require|mrequire|resolveNative|resolveNativePath)\s*\(\s*['"]([^'"]+)['"]/g;
+        while ((m = reSpec.exec(code))) {
+            const p = nativeCandidates(m[1], f);
+            if (p) note(p, null);
+        }
+
+        /* 2. a native module bound to a variable:
+              const nativePath = resolveNative('mochifs');
+              native = await import(nativePath);          */
+        const varPath = new Map();
+        const reBind = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:resolveNative|resolveNativePath)\s*\(\s*['"]([^'"]+)['"]/g;
+        while ((m = reBind.exec(code))) {
+            const p = nativeCandidates(m[2], f);
+            if (p) { varPath.set(m[1], p); note(p, null); }
+        }
+        const reImport = /(?:const|let|var)?\s*([A-Za-z_$][\w$]*)\s*=\s*await\s+import\s*\(\s*([A-Za-z_$][\w$]*|['"][^'"]+['"])\s*\)/g;
+        const nsVars = new Map();
+        while ((m = reImport.exec(code))) {
+            const spec = m[2].replace(/^['"]|['"]$/g, '');
+            const p = varPath.has(spec) ? varPath.get(spec) : nativeCandidates(spec, f);
+            if (p) { nsVars.set(m[1], p); note(p, null); }
+        }
+
+        /* 3. the symbols the program actually calls on that module:
+              native.readText(...)  ->  readText is what it wants. */
+        nsVars.forEach(function (path, varName) {
+            const reUse = new RegExp('\\b' + varName + '\\.([A-Za-z_$][\\w$]*)\\s*\\(', 'g');
+            let u;
+            while ((u = reUse.exec(code))) note(path, u[1]);
+            const reDest = new RegExp('\\{([^}]*)\\}\\s*=\\s*' + varName + '\\b', 'g');
+            while ((u = reDest.exec(code))) {
+                const parts = u[1].split(',');
+                for (const part of parts) {
+                    const nm = part.split(':').pop().trim();
+                    if (nm) note(path, nm);
+                }
+            }
+        });
+
+        /* 4. dynalib(file, regOrOffset, symbol, abiSig, opts) */
+        const reDyn = /\bdynalib\s*\(\s*['"]([^'"]+)['"]\s*,\s*([^,]+)\s*,\s*(?:null|'([^']*)'|"([^"]*)")/g;
+        while ((m = reDyn.exec(code))) {
+            const p = nativeCandidates(m[1], f);
+            if (p) note(p, m[3] || m[4] || null);
+        }
+    }
+    return uses;
+}
+
 const HOST_C = `/* lean_host.c — generated by tools/aot/build-lean.js.
  *
  * A minimal AOT host: the JavaScript parser is not even linked into this
  * binary (the engine is built with -DMBJS_DISABLE_PARSER).  Every module is
  * pre-compiled to bytecode and registered here before the entry module runs.
+ *
+ * DEBUG LEVELS
+ * ------------
+ *   SEVM_DEBUG=0 (or unset)  release — no trace, only real errors
+ *   SEVM_DEBUG=1             file-load trace, timestamped
+ *   SEVM_DEBUG=2             full trace: level 1 + the deepest addresses
+ *                            (bytecode blobs inside this exe, and for the
+ *                            native plugins their absolute mapping base,
+ *                            PE image size, entry point and the address of
+ *                            the exported mbjs_init_module)
+ *
+ * The level can also be given on the command line: --debug=2
+ *
+ * The native plugins are NOT embedded in this binary: they are loaded from
+ * mochi_modules/ at runtime, so the addresses printed at level 2 are the
+ * absolute addresses the loader mapped them at.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -346,21 +607,217 @@ const HOST_C = `/* lean_host.c — generated by tools/aot/build-lean.js.
 
 #include "lean_bundle.h"
 
-/* Diagnostic loader: prints the module name the engine asks for, then
-   forwards to the engine loader (which handles the native .dll plugins). */
+/* ---- debug plumbing ------------------------------------------------ */
+
+extern unsigned long long __stdcall GetTickCount64(void);
+extern void *__stdcall GetModuleHandleA(const char *name);
+extern void *__stdcall GetProcAddress(void *module, const char *name);
+
+static int lean_debug = -1;
+static unsigned long long lean_t0 = 0;
+
+static int lean_dbg(void)
+{
+  if (lean_debug < 0) {
+    const char *env = getenv("SEVM_DEBUG");
+    lean_debug = env ? atoi(env) : 0;
+    if (lean_debug < 0) lean_debug = 0;
+    if (lean_debug > 2) lean_debug = 2;
+  }
+  return lean_debug;
+}
+
+/* [MM:SS.mmm] counted from process start */
+static void lean_stamp(char *buf, size_t n)
+{
+  unsigned long long ms = GetTickCount64() - lean_t0;
+  unsigned long long m = ms / 60000, s = (ms / 1000) % 60, r = ms % 1000;
+  snprintf(buf, n, "%02llu:%02llu.%03llu", m, s, r);
+}
+
+/* Deep address information of a module the loader has just mapped.
+   These are absolute addresses in the process image, not embedded copies. */
+static void lean_pe_info(const char *path, char *buf, size_t n)
+{
+  unsigned char *base = (unsigned char *)GetModuleHandleA(path);
+  unsigned long off = 0, entry = 0, size = 0;
+  void *init = NULL;
+
+  if (!base) {
+    snprintf(buf, n, "base=<not mapped>");
+    return;
+  }
+  off = *(unsigned long *)(base + 0x3C);
+  if (off && off < 0x1000) {
+    entry = *(unsigned long *)(base + off + 4 + 20 + 0x10);
+    size  = *(unsigned long *)(base + off + 4 + 20 + 0x38);
+  }
+  init = GetProcAddress(base, "mbjs_init_module");
+  snprintf(buf, n, "base=%p image=0x%lx entry=0x%lx init=%p",
+           (void *)base, size, entry, init);
+}
+
+/* ---- MochiBake: the baked native plugins --------------------------- */
+/* The compiler embedded the DLLs this program actually calls.  At startup
+   they are materialised into the bake scratch directory and the loader
+   hands those copies to the engine, so the app runs from a single file
+   with no external plugin directory. */
+extern int CreateDirectoryA(const char *path, void *attrs);
+extern unsigned long __stdcall GetLastError(void);
+extern unsigned long __stdcall GetCurrentDirectoryA(unsigned long len, char *buf);
+
+#define LEAN_BAKE_MAX 32
+static char lean_bake_path[LEAN_BAKE_MAX][1200];
+static char lean_bake_dir[1024];
+
+static int lean_file_exists(const char *path)
+{
+  FILE *f = fopen(path, "rb");
+  if (!f) return 0;
+  fclose(f);
+  return 1;
+}
+
+/* Materialise the baked plugins.
+   The JS-side resolver (mochinode) looks for native plugins in
+   <cwd>/mochi_modules, so the copies are placed there when possible; a
+   plugin that already exists on disk is never overwritten, that one goes
+   to the temp bake directory instead. */
+static void lean_bake_prepare(void)
+{
+  const char *tmp = getenv("TEMP");
+  char cwd[1024];
+  char localDir[1200], tempDir[1200];
+  unsigned long n;
+  size_t i;
+
+  if (!tmp) tmp = ".";
+  snprintf(tempDir, sizeof tempDir, "%s/mochibake", tmp);
+  CreateDirectoryA(tempDir, 0);
+
+  n = GetCurrentDirectoryA(sizeof cwd, cwd);
+  if (n > 0 && n < sizeof cwd) {
+    snprintf(localDir, sizeof localDir, "%s/mochi_modules", cwd);
+    CreateDirectoryA(localDir, 0);
+  } else {
+    localDir[0] = 0;
+  }
+
+  for (i = 0; i < lean_bake_count && i < LEAN_BAKE_MAX; i++) {
+    char local[1200], tmpPath[1200], path[1200];
+    int found = 0;
+    FILE *f;
+
+    snprintf(local, sizeof local, "%s/%s", localDir, lean_bakes[i].name);
+    snprintf(tmpPath, sizeof tmpPath, "%s/%s", tempDir, lean_bakes[i].name);
+
+    /* 1. already reachable next to the app -> use it, never write over it */
+    if (localDir[0] && lean_file_exists(local)) {
+      snprintf(path, sizeof path, "%s", local);
+      found = 1;
+    }
+    /* 2. the temp bake copy from an earlier run */
+    if (!found && lean_file_exists(tmpPath)) {
+      snprintf(path, sizeof path, "%s", tmpPath);
+      found = 1;
+    }
+    /* 3. create it next to the app (the JS resolver looks there) */
+    if (!found && localDir[0]) {
+      f = fopen(local, "wb");
+      if (f) {
+        fwrite(lean_bakes[i].data, 1, lean_bakes[i].size, f);
+        fclose(f);
+        snprintf(path, sizeof path, "%s", local);
+        found = 1;
+      }
+    }
+    /* 4. last resort: the temp bake directory */
+    if (!found) {
+      f = fopen(tmpPath, "wb");
+      if (!f) {
+        fprintf(stderr, "lean: cannot materialize %s (err=%lu)\\n",
+                lean_bakes[i].name, GetLastError());
+        lean_bake_path[i][0] = 0;
+        continue;
+      }
+      fwrite(lean_bakes[i].data, 1, lean_bakes[i].size, f);
+      fclose(f);
+      snprintf(path, sizeof path, "%s", tmpPath);
+    }
+    snprintf(lean_bake_path[i], sizeof lean_bake_path[i], "%s", path);
+    if (lean_dbg() >= 1) {
+      char ts[32];
+      lean_stamp(ts, sizeof ts);
+      fprintf(stderr, "[lean] [%s] bake    %s -> %s (%lu B, symbols: %s)\\n",
+              ts, lean_bakes[i].name, path, (unsigned long)lean_bakes[i].size,
+              lean_bakes[i].symbols[0] ? lean_bakes[i].symbols : "(all)");
+    }
+  }
+}
+
+/* If the engine asks for a plugin we have baked, hand it the materialised
+   copy instead of the one sitting in mochi_modules/. */
+static const char *lean_bake_lookup(const char *name)
+{
+  static char path[1200];
+  const char *base = name;
+  const char *slash = strrchr(name, '/');
+  const char *bslash = strrchr(name, '\\\\');
+  size_t i;
+  if (slash) base = slash + 1;
+  if (bslash && bslash + 1 > base) base = bslash + 1;
+  for (i = 0; i < lean_bake_count && i < LEAN_BAKE_MAX; i++) {
+    if (!strcmp(base, lean_bakes[i].name)) {
+      if (!lean_bake_path[i][0]) return NULL;
+      snprintf(path, sizeof path, "%s", lean_bake_path[i]);
+      return path;
+    }
+  }
+  return NULL;
+}
+
+/* Loader wrapper: traces what the engine asks for, then forwards to the
+   engine loader (which performs the actual native plugin load). */
 static MBJSModuleDef *lean_module_loader(MBJSContext *ctx, const char *name,
                                          void *opaque, MBJSValue attributes)
 {
   extern MBJSModuleDef *mbjs_module_loader(MBJSContext *ctx, const char *name,
                                            void *opaque, MBJSValue attributes);
-  fprintf(stderr, "[lean] loader: '%s'\\n", name);
-  return mbjs_module_loader(ctx, name, opaque, attributes);
+  int d = lean_dbg();
+  char ts[32];
+  MBJSModuleDef *m;
+
+  if (d >= 1) {
+    lean_stamp(ts, sizeof ts);
+    fprintf(stderr, "[lean] [%s] load    %s -> ", ts, name);
+    fflush(stderr);
+  }
+  {
+    const char *baked = lean_bake_lookup(name);
+    const char *target = baked ? baked : name;
+    if (baked && d >= 1)
+      fprintf(stderr, "[bake] %s -> %s\\n", name, baked);
+    m = mbjs_module_loader(ctx, target, opaque, attributes);
+  }
+  if (d >= 1) {
+    if (d >= 2) {
+      char pe[192];
+      lean_pe_info(name, pe, sizeof pe);
+      fprintf(stderr, "%s (%s)\\n", pe, m ? "ok" : "FAILED");
+    } else {
+      fprintf(stderr, "%s\\n", m ? "ok" : "FAILED");
+    }
+  }
+  return m;
 }
 
 static MBJSContext *MBJS_NewCustomContext(MBJSRuntime *rt)
 {
   MBJSContext *ctx = MBJS_NewContext(rt);
   size_t k;
+  int d = lean_dbg();
+  char ts[32];
+
   if (!ctx)
     return NULL;
   {
@@ -371,11 +828,24 @@ static MBJSContext *MBJS_NewCustomContext(MBJSRuntime *rt)
     extern MBJSModuleDef *mbjs_init_module_os(MBJSContext *ctx, const char *name);
     mbjs_init_module_os(ctx, "mbjs:os");
   }
+  /* MochiBake: the engine's own DLL baking organ. */
+  {
+    extern MBJSModuleDef *mbjs_init_module_bake(MBJSContext *ctx, const char *name);
+    mbjs_init_module_bake(ctx, "mbjs:bake");
+  }
   /* Register every pre-compiled module under its bundle name.  After this
-     the engine resolves "mochibundle:<path>" from the module registry and
-     never touches the file system. */
+     the engine resolves the module names from the registry and never
+     touches the file system for JavaScript. */
   for (k = 0; k < lean_module_count; k++) {
-    fprintf(stderr, "[lean] register %s\\n", lean_modules[k].name);
+    if (d >= 1) {
+      lean_stamp(ts, sizeof ts);
+      fprintf(stderr, "[lean] [%s] register %s -> %lu B", ts,
+              lean_modules[k].name, (unsigned long)lean_modules[k].size);
+      if (d >= 2)
+        fprintf(stderr, " @ %p (bytecode inside this exe)",
+                (const void *)lean_modules[k].data);
+      fprintf(stderr, "\\n");
+    }
     mbjs_std_eval_binary(ctx, lean_modules[k].data, lean_modules[k].size, 1);
     if (MBJS_HasException(ctx)) {
       fprintf(stderr, "lean: module %s failed to load\\n", lean_modules[k].name);
@@ -387,10 +857,21 @@ static MBJSContext *MBJS_NewCustomContext(MBJSRuntime *rt)
 
 int main(int argc, char **argv)
 {
-  int r;
+  int r, i;
   MBJSRuntime *rt;
   MBJSContext *ctx;
   MBJSValue globals;
+  char ts[32];
+
+  lean_t0 = GetTickCount64();
+  lean_bake_prepare();
+  for (i = 1; i < argc; i++) {
+    if (!strncmp(argv[i], "--debug=", 8)) {
+      lean_debug = atoi(argv[i] + 8);
+      if (lean_debug < 0) lean_debug = 0;
+      if (lean_debug > 2) lean_debug = 2;
+    }
+  }
 
   r = 0;
   rt = MBJS_NewRuntime();
@@ -407,10 +888,23 @@ int main(int argc, char **argv)
                       MBJS_NewCFunction(ctx, lean_module_resolve, "moduleName", 1));
   MBJS_SetPropertyStr(ctx, globals, "__MOCHI_MODULE_EXISTS__",
                       MBJS_NewCFunction(ctx, lean_module_exists, "moduleExists", 1));
+  /* MochiBake as a global too: a bundled app must not need the compiler to
+     know the "mbjs:bake" specifier, the organ is simply there at runtime. */
+  {
+    extern MBJSValue mbjs_bake_object(MBJSContext *ctx);
+    MBJS_SetPropertyStr(ctx, globals, "bake", mbjs_bake_object(ctx));
+  }
   MBJS_FreeValue(ctx, globals);
 
   mbjs_std_add_helpers(ctx, argc, argv);
-  fprintf(stderr, "[lean] eval entry\\n");
+  if (lean_dbg() >= 1) {
+    lean_stamp(ts, sizeof ts);
+    fprintf(stderr, "[lean] [%s] eval    entry -> %lu B", ts,
+            (unsigned long)lean_entry_size);
+    if (lean_dbg() >= 2)
+      fprintf(stderr, " @ %p (bytecode inside this exe)", (const void *)lean_entry);
+    fprintf(stderr, "\\n");
+  }
   mbjs_std_eval_binary(ctx, lean_entry, lean_entry_size, 0);
   if (MBJS_HasException(ctx)) {
     fprintf(stderr, "lean: entry failed\\n");
@@ -431,6 +925,7 @@ int main(int argc, char **argv)
 
 async function main() {
     exec('if not exist ' + q(WORK) + ' mkdir ' + q(WORK));
+    exec('if not exist ' + q(CACHE) + ' mkdir ' + q(CACHE));
 
     const collected = collect(ENTRY);
     const root = ROOT;
@@ -474,6 +969,18 @@ async function main() {
         if (key) aliases.push({ spec, name: key });
     }
 
+    /* ---- MochiBake: bake the native plugins the program calls -------- */
+    const uses = scanNativeUses(collected.jsFiles);
+    const bakes = [];
+    const systemDlls = [];
+    uses.forEach(function (e, path) {
+        if (path.indexOf(ROOT + '/') !== 0) { systemDlls.push(e); return; }
+        const bytes = readBytes(path);
+        const info = peInfo(bytes);
+        bakes.push({ name: e.name, path: path, bytes: bytes,
+                     symbols: Array.from(e.symbols), info: info });
+    });
+
     /* emit the C header */
     let header = '/* lean_bundle.h — generated by tools/aot/build-lean.js */\n' +
                  '#ifndef LEAN_BUNDLE_H\n#define LEAN_BUNDLE_H\n' +
@@ -492,6 +999,16 @@ async function main() {
     for (const a of aliases) header += '  { ' + cString(a.spec) + ', ' + cString(a.name) + ' },\n';
     header += '};\n\n';
     header += 'static const size_t lean_alias_count = sizeof(lean_aliases) / sizeof(lean_aliases[0]);\n\n';
+    for (let i = 0; i < bakes.length; i++)
+        header += hexArray('lean_bake_' + i, bakes[i].bytes);
+    header += '\ntypedef struct { const char *name; const unsigned char *data; unsigned long size; const char *symbols; } LeanBake;\n\n';
+    header += 'static const LeanBake lean_bakes[] = {\n';
+    for (let i = 0; i < bakes.length; i++) {
+        header += '  { ' + cString(bakes[i].name) + ', lean_bake_' + i + ', ' +
+                  bakes[i].bytes.length + ', ' +
+                  cString(bakes[i].symbols.join(',')) + ' },\n';
+    }
+    header += '};\n\nstatic const size_t lean_bake_count = sizeof(lean_bakes) / sizeof(lean_bakes[0]);\n\n';
     header += hexArray('lean_entry', entryBytes);
     header += 'static const unsigned long lean_entry_size = ' + entryBytes.length + ';\n\n';
     header += `
@@ -536,10 +1053,24 @@ static MBJSValue lean_module_exists(MBJSContext *ctx, MBJSValueConst this_val,
 
     const totalBytes = compiled.reduce((n, m) => n + m.bytes.length, 0);
     console.log('');
-    console.log('compiled modules : ' + compiled.length);
+    console.log('compiled modules : ' + compiled.length +
+                ' (' + cacheHits + ' from cache, ' + cacheMisses + ' recompiled)');
     console.log('bytecode bytes   : ' + totalBytes + ' (entry ' + entryBytes.length + ')');
     console.log('aliases          : ' + aliases.length);
     console.log('source bytes kept: 0 (JS is not embedded)');
+    let bakeBytes = 0;
+    for (const b of bakes) bakeBytes += b.bytes.length;
+    console.log('baked natives    : ' + bakes.length + ' (' + bakeBytes + ' B, embedded in the exe)');
+    for (const b of bakes) {
+        console.log('  ' + b.name + '  ' + b.bytes.length + ' B  exports=' +
+                    (b.info ? b.info.exports.length : '?') +
+                    '  symbols=' + (b.symbols.length ? b.symbols.join(',') : '(module)'));
+    }
+    console.log('system natives   : ' + systemDlls.length + ' (left to the OS loader)');
+    for (const e of systemDlls) {
+        console.log('  ' + e.name + '  symbols=' +
+                    (e.symbols.size ? Array.from(e.symbols).join(',') : '(module)'));
+    }
     console.log('written          : ' + join(WORK, 'lean_bundle.h') + ', ' + join(WORK, 'lean_host.c'));
 }
 

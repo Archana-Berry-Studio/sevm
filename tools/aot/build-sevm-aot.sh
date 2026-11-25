@@ -95,8 +95,21 @@ for f in $PREBUILT; do
     cp -f "$ENGINE/build_manual/$f.o" "$OUT/objects/$f.o"
 done
 
+# MochiBake: the engine-internal organ that reads native-plugin PE export/import
+# tables and materialises the DLLs an app actually calls back onto disk at
+# startup.  It is compiled into the engine archive, not shipped as a tool.
+TOOLS="$(cd "$(dirname "$0")" && pwd)"
+TOOLS_WIN="$(cd "$TOOLS" && pwd -W)"
+OBJS_EXTRA=""
+if [ -f "$TOOLS/mbjs-bake.c" ]; then
+    "$CC" $CFLAGS $DEFS -I"$ENGINE_WIN" -c "$TOOLS_WIN/mbjs-bake.c" -o "$OUT_WIN/objects/mbjs-bake.o" \
+        || { echo "FAIL: mbjs-bake compile"; exit 1; }
+    OBJS_EXTRA=" $OUT_WIN/objects/mbjs-bake.o"
+fi
+
 OBJS=""
 for f in $SRC $PREBUILT; do OBJS="$OBJS $OUT_WIN/objects/$f.o"; done
+OBJS="$OBJS$OBJS_EXTRA"
 rm -f "$OUT/libmbjs-sevm-aot.a"
 "$AR" rcs "$OUT_WIN/libmbjs-sevm-aot.a" $OBJS
 

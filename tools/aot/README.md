@@ -66,3 +66,46 @@ breaks the app at compile time.
 
 Verified end-to-end on port 8099: `/api/health`, `/api/dynalib/float?v=N`
 (native `msvcrt!sqrt`), `/api/items` (SQLite) all return 200.
+
+## MochiBake (the DLL baking organ)
+
+MochiBake is an **internal organ of MochiBerry**, not a separate tool and not
+another module directory.  It is compiled into the engine archive
+(`tools/aot/mbjs-bake.c` -> `mbjs-bake.o`) and exposed to JavaScript as the
+built-in module `mbjs:bake`:
+
+    bake.peInfo(path)        -> {machine,imageSize,exports[],imports[]}
+    bake.read(path)          -> Uint8Array (the DLL bytes)
+    bake.write(name,bytes)   -> materialise an embedded DLL
+    bake.tempDir()           -> the bake scratch directory
+
+What it does for a bundle:
+
+1. **It reads the programmer's intent from the JavaScript.**  Every
+   `loadNative()/require()/resolveNative()` of a `.dll`, every
+   `dynalib(file, reg, symbol)` call and every property the program calls on
+   an imported native module is a declaration of "this program needs this".
+2. **Only those DLLs are baked.**  A DLL inside the project is embedded in
+   the binary as raw bytes; a DLL nobody calls is left out entirely.
+3. **System DLLs are not copied.**  `C:/Windows/System32/msvcrt.dll` and
+   friends stay with the OS loader - the essential base components remain
+   pulled, they are simply not duplicated.
+4. **At startup the baked plugins are materialised** (next to the app in
+   `mochi_modules/`, or in the temp bake directory when that folder is not
+   writable) and the loader hands those copies to the engine.  An existing
+   file on disk is never overwritten.
+5. **The manifest is visible, not silent** - debug level 1 prints every
+   baked plugin with its size and the symbols the program calls:
+
+        [lean] [00:00.000] bake    mochifs.dll -> .../mochi_modules/mochifs.dll
+               (66294 B, symbols: exists,readText,writeText,appendText,
+                stat,readdir,mkdir,rename,remove,copyFile,cwd)
+
+The result is a single-file application: the JavaScript is bytecode, the
+native plugins are inside the executable, and the app runs with no external
+plugin directory at all.
+
+Sizes measured on this tree (production entry, x86-64):
+
+    without baked plugins   808.974 B   (needs mochi_modules/ on disk)
+    with baked plugins    1.164.302 B   (runs with mochi_modules/ removed)
