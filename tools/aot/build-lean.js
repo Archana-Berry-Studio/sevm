@@ -1869,7 +1869,10 @@ static void dbg_command(char *line)
     DBG_DROP(dbg_spin_req);
     return;
   }
-  if (!strcmp(cmd, "shutdown")) { dbg_send("bye\\n"); dbg_quit = 1; return; }
+  if (!strcmp(cmd, "shutdown")) {
+    { char ts[32]; lean_stamp(ts, sizeof ts);
+      lean_trace("[lean] [%s] host close shutdown requested by remote debugger\\n", ts); }
+    dbg_send("bye\\n"); dbg_quit = 1; return; }
   dbg_send("ERR unknown command (try help)\\n");
 }
 
@@ -2059,7 +2062,7 @@ int main(int argc, char **argv)
     lean_stamp(ts, sizeof ts);
     GetModuleFileNameA(NULL, exe, sizeof exe);
     for (k = 0; k < lean_module_count; k++) total += lean_modules[k].size;
-    lean_trace("[lean] [%s] host     exe=%s pid=%lu image=0x%lx qpc=%llu Hz debug=%d "
+    lean_trace("[lean] [%s] host open  exe=%s pid=%lu image=0x%lx qpc=%llu Hz debug=%d "
             "modules=%lu aliases=%lu bakes=%lu bytecode=%llu B entry=%lu B\\n",
             ts, exe, GetCurrentProcessId(), lean_image_size(img), lean_freq,
             lean_dbg(), (unsigned long)lean_module_count,
@@ -2188,10 +2191,11 @@ int main(int argc, char **argv)
   if (lean_dbg() >= 2) {
     char ts[32];
     lean_stamp(ts, sizeof ts);
-    lean_trace("[lean] [%s] summary  %lu module(s) registered, %lu B bytecode, "
-                    "%lu baked native(s), exit=%d, uptime=%llu us\\n",
-            ts, (unsigned long)lean_module_count, (unsigned long)lean_entry_size,
-            (unsigned long)lean_bake_count, r, lean_now() * 10);
+    lean_trace("[lean] [%s] host close exit=%d uptime=%llu us "
+                    "(%lu module(s), %lu B bytecode, %lu baked native(s))\\n",
+            ts, r, lean_now() * 10,
+            (unsigned long)lean_module_count, (unsigned long)lean_entry_size,
+            (unsigned long)lean_bake_count);
   }
   mbjs_std_free_handlers(rt);
   MBJS_FreeContext(ctx);
