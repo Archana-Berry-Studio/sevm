@@ -1204,15 +1204,18 @@ static MBJSContext *MBJS_NewCustomContext(MBJSRuntime *rt)
     {
       unsigned long long t0 = lean_now();
       mbjs_std_eval_binary(ctx, lean_modules[k].data, lean_modules[k].size, 1);
-      if (d >= 2) {
+      if (d >= 1) {
         char ts[32];
         unsigned long long t1 = lean_now();
         lean_stamp(ts, sizeof ts);
         lean_trace("[lean] [%s] module  %s -> %s in %llu us\\n",
                 ts, lean_modules[k].name,
                 MBJS_HasException(ctx) ? "FAILED" : "ok", (t1 - t0) * 10);
-        lean_out_flush();
       }
+      /* flush on every module load regardless of level: the level-1 startup
+         traces (bake + register) must reach the log even if the loop never
+         returns (the release loop is the blocking mbjs_std_loop). */
+      lean_out_flush();
     }
     if (MBJS_HasException(ctx)) {
       lean_trace("lean: module %s failed to load\\n", lean_modules[k].name);
