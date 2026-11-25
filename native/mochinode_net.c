@@ -90,6 +90,12 @@ static MBJSValue net_httpServer(MBJSContext *ctx, MBJSValueConst this_val,
         closesocket(s);
         return MBJS_NewInt32(ctx, -1);
     }
+    /* Non-blocking accept so the JS serve loop can yield to the engine
+       (and the remote debugger) instead of monopolising the thread. */
+    {
+        u_long nb = 1;
+        ioctlsocket(s, FIONBIO, &nb);
+    }
     return MBJS_NewFloat64(ctx, fd_to_js(s));
 }
 
@@ -102,8 +108,10 @@ static MBJSValue net_httpAccept(MBJSContext *ctx, MBJSValueConst this_val,
     if (argc < 1 || get_fd(argv[0], &srv) < 0)
         return MBJS_NewInt32(ctx, -1);
     conn = accept(srv, NULL, NULL);
-    if (conn == INVALID_SOCKET)
+    if (conn == INVALID_SOCKET) {
+        /* non-blocking: no pending connection yet -> retry later */
         return MBJS_NewInt32(ctx, -1);
+    }
     return MBJS_NewFloat64(ctx, fd_to_js(conn));
 }
 
