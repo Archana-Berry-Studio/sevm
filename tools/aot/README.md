@@ -109,3 +109,40 @@ Sizes measured on this tree (production entry, x86-64):
 
     without baked plugins   808.974 B   (needs mochi_modules/ on disk)
     with baked plugins    1.164.302 B   (runs with mochi_modules/ removed)
+
+## Per-function slicing (recompile, not just re-embed)
+
+A plugin whose C source we own is not embedded as-is: it is **recompiled
+with only the functions the program calls**.
+
+1. The compiler already knows the JS symbols the program uses
+   (`native.readText(`, `native.callSymbol.apply(`, `native.httpWrite`
+   handed over as a callback - any property access on the native namespace
+   counts).
+2. A **derived copy** of the plugin source is written to
+   `build_ex/lean/sliced/<name>_sliced.c` (the original file in `native/` is
+   never touched).  Its `MBJS_CFUNC_DEF(...)` table is trimmed to the used
+   names and the hard-coded table counts (`tab, 11`, `DL_TAB_LEN`) are fixed.
+3. The copy is compiled with `-Os -ffunction-sections -fdata-sections
+   -Wl,--gc-sections -Wl,-s`, so every static function that nothing
+   references any more is collected by the linker.
+4. The *sliced* DLL is what gets embedded in the binary.
+
+Measured on this tree (production entry, x86-64):
+
+    mochinode_sqlite.dll    61.289 -> 22.016 B  (35.9 %)
+    mochifs.dll              66.294 -> 23.040 B  (34.8 %)
+    mochinode_dynalib.dll    82.195 -> 45.056 B  (54.8 %)
+    mochinode_net.dll        60.597 -> 19.456 B  (32.1 %)
+    baked natives          270.375 -> 109.568 B  (-59.5 %)
+
+    exe without plugins       808.974 B
+    exe with whole DLLs     1.166.350 B
+    exe with sliced DLLs    1.006.094 B
+
+Verified: the binary runs with `mochi_modules/` removed, the materialised
+copies have exactly the sliced sizes, and `/api/health`,
+`/api/dynalib/float?v=49` and `/api/items` all answer.
+
+A plugin without a recipe in `NATIVE_RECIPES` (or without a symbol
+manifest) is baked whole - the build log says so, it never fails silently.

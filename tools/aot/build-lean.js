@@ -542,7 +542,7 @@ function scanNativeUses(files) {
             const p = nativeCandidates(m[2], f);
             if (p) { varPath.set(m[1], p); note(p, null); }
         }
-        const reImport = /(?:const|let|var)?\s*([A-Za-z_$][\w$]*)\s*=\s*await\s+import\s*\(\s*([A-Za-z_$][\w$]*|['"][^'"]+['"])\s*\)/g;
+        const reImport = /(?:const|let|var)?\s*([A-Za-z_$][\w$]*)\s*=\s*await\s+(?:import|loadNative|require|mrequire)\s*\(\s*([A-Za-z_$][\w$]*|['"][^'"]+['"])\s*\)/g;
         const nsVars = new Map();
         while ((m = reImport.exec(code))) {
             const spec = m[2].replace(/^['"]|['"]$/g, '');
@@ -553,7 +553,12 @@ function scanNativeUses(files) {
         /* 3. the symbols the program actually calls on that module:
               native.readText(...)  ->  readText is what it wants. */
         nsVars.forEach(function (path, varName) {
-            const reUse = new RegExp('\\b' + varName + '\\.([A-Za-z_$][\\w$]*)\\s*\\(', 'g');
+            /* Any property access counts: the symbol may be called directly
+               (native.readText(...)), through .apply()/.call(), or handed
+               over as a callback (makeResponse(native.httpWrite, conn)).
+               Over-reporting keeps a function alive that could have been
+               dropped - the safe direction. */
+            const reUse = new RegExp('\\b' + varName + '\\.([A-Za-z_$][\\w$]*)', 'g');
             let u;
             while ((u = reUse.exec(code))) note(path, u[1]);
             const reDest = new RegExp('\\{([^}]*)\\}\\s*=\\s*' + varName + '\\b', 'g');
@@ -574,6 +579,137 @@ function scanNativeUses(files) {
         }
     }
     return uses;
+}
+
+/* ------------------------------------------------------------------ */
+/* MochiBake: per-function slicer (recompile, not just re-embed)        */
+/* ------------------------------------------------------------------ */
+/* A plugin whose C source we own can be recompiled with only the
+ * functions the program calls.  The export table in a *derived copy* of
+ * the source is trimmed to the used JS names (the original file is never
+ * touched), the hard-coded table counts are fixed, and the linker garbage
+ * collects every static function nothing references any more.  The result
+ * is a smaller DLL that is still a real native module. */
+const GCC = 'C:/Users/Administrator/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.MCF.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/gcc.exe';
+const SLICE_DIR = 'E:/sevm/build_ex/lean/sliced';
+
+const NATIVE_RECIPES = {
+    'mochifs.dll': {
+        src: ['E:/sevm/native/mochifs.c'],
+        inc: ['E:/bcf/mochiberry', 'E:/sevm/native'],
+        libs: []
+    },
+    'mochinode_sqlite.dll': {
+        src: ['E:/sevm/native/mochinode_sqlite.c'],
+        inc: ['E:/bcf/mochiberry', 'E:/sevm/native'],
+        libs: []
+    },
+    'mochinode_net.dll': {
+        src: ['E:/sevm/native/mochinode_net.c'],
+        inc: ['E:/bcf/mochiberry', 'E:/sevm/native'],
+        libs: ['-lws2_32']
+    },
+    'mochinode_dynalib.dll': {
+        src: ['E:/sevm/native/mochinode_dynalib.c',
+              'E:/sevm/libdynalib/dynalib.c',
+              'E:/sevm/libdynalib/dynalib_abi.c',
+              'E:/sevm/libdynalib/dynalib_trampoline.c'],
+        inc: ['E:/bcf/mochiberry', 'E:/sevm/native', 'E:/sevm/libdynalib'],
+        libs: []
+    }
+};
+
+function defLine(line) {
+    return line.match(/^\s*MBJS_CFUNC_DEF\(\s*"([^"]+)"\s*,\s*(\d+)\s*,\s*([A-Za-z_]\w*)\s*\)\s*,?\s*$/);
+}
+
+function absolutizeIncludes(text, baseDir) {
+    return text.replace(/#include\s+"(\.\.?\/[^"]+)"/g, function (all, inc) {
+        return '#include "' + norm(baseDir + '/' + inc) + '"';
+    });
+}
+
+/* trim the CFUNC_DEF tables to the used JS names and fix the counts */
+function slicePluginSource(srcText, used, baseDir) {
+    const lines = srcText.split('\n');
+    const out = [];
+    const macroFix = [];
+    let kept = 0, removed = 0;
+    let i = 0;
+    while (i < lines.length) {
+        if (!defLine(lines[i])) { out.push(lines[i]); i++; continue; }
+        const run = [];
+        let j = i;
+        while (j < lines.length) {
+            const mm = defLine(lines[j]);
+            if (!mm) break;
+            run.push({ line: lines[j], name: mm[1] });
+            j++;
+        }
+        const keep = [];
+        for (const e of run) if (used.has(e.name)) keep.push(e);
+        removed += run.length - keep.length;
+        kept += keep.length;
+        for (const e of keep) out.push(e.line);
+        let k = j;
+        while (k < lines.length && k < j + 6) {
+            const cm = lines[k].match(/([A-Za-z_]\w*)\s*,\s*(\d+|[A-Za-z_]\w*)\s*\)/);
+            if (cm) {
+                const n = cm[2];
+                if (/^\d+$/.test(n) && Number(n) === run.length) {
+                    out.push(lines[k].replace(/([A-Za-z_]\w*)\s*,\s*\d+\s*\)/, '$1, ' + keep.length + ')'));
+                    k++;
+                    break;
+                }
+                if (/^[A-Za-z_]\w*$/.test(n) && n !== cm[1]) {
+                    macroFix.push([n, run.length, keep.length]);
+                    out.push(lines[k]);
+                    k++;
+                    break;
+                }
+            }
+            out.push(lines[k]);
+            k++;
+        }
+        i = k;
+    }
+    let text = out.join('\n');
+    for (const fix of macroFix) {
+        const re = new RegExp('#define\\s+' + fix[0] + '\\s+' + fix[1] + '\\b');
+        text = text.replace(re, '#define ' + fix[0] + ' ' + fix[2]);
+    }
+    return { text: absolutizeIncludes(text, baseDir), kept: kept, removed: removed };
+}
+
+/* recompile one plugin with only the called functions */
+function compileSliced(name, recipe, used) {
+    exec('if not exist ' + q(SLICE_DIR) + ' mkdir ' + q(SLICE_DIR));
+    const srcs = [];
+    let kept = 0, removed = 0;
+    for (let idx = 0; idx < recipe.src.length; idx++) {
+        const p = recipe.src[idx];
+        if (idx === 0) {
+            const r = slicePluginSource(readText(p), used, dirname(p));
+            const outPath = join(SLICE_DIR, name.replace(/\.(dll|so)$/i, '') + '_sliced.c');
+            writeText(outPath, r.text);
+            srcs.push(outPath);
+            kept = r.kept; removed = r.removed;
+        } else {
+            srcs.push(p);
+        }
+    }
+    const incs = recipe.inc.map(function (d) { return '-I' + q(d); }).join(' ');
+    const libs = (recipe.libs || []).join(' ');
+    const outDll = join(SLICE_DIR, name);
+    const cmd = 'cd /d ' + q(SLICE_DIR) + ' && ' + q(GCC) +
+                ' -shared -Os -ffunction-sections -fdata-sections' +
+                ' -Wl,--gc-sections -Wl,-s ' + incs + ' -o ' + q(outDll) + ' ' +
+                srcs.map(function (s) { return q(s); }).join(' ') + (libs ? ' ' + libs : '');
+    const r = exec(cmd);
+    if (r.code !== 0 || !fileExists(outDll)) {
+        return { ok: false, err: (r.stdout || '').split('\n').slice(-3).join(' | '), kept: kept, removed: removed };
+    }
+    return { ok: true, dll: outDll, kept: kept, removed: removed };
 }
 
 const HOST_C = `/* lean_host.c — generated by tools/aot/build-lean.js.
@@ -981,6 +1117,27 @@ async function main() {
                      symbols: Array.from(e.symbols), info: info });
     });
 
+    /* per-function slice: recompile the plugins we own with only the
+       functions the program actually calls */
+    function bakeBytesOf(b) { return b.sliced ? b.sliced.bytes : b.bytes; }
+    for (const b of bakes) {
+        const recipe = NATIVE_RECIPES[b.name];
+        b.sliced = null;
+        if (!recipe) { console.log('  slice ' + b.name + ': no recipe, bake whole'); continue; }
+        if (!b.symbols.length) { console.log('  slice ' + b.name + ': no symbol manifest, bake whole'); continue; }
+        const r = compileSliced(b.name, recipe, new Set(b.symbols));
+        if (!r.ok) {
+            console.log('  slice FAILED ' + b.name + ': ' + r.err + ' (baking the whole DLL)');
+            continue;
+        }
+        const sbytes = readBytes(r.dll);
+        const sinfo = peInfo(sbytes);
+        b.sliced = { bytes: sbytes, info: sinfo, kept: r.kept, removed: r.removed };
+        console.log('  slice ' + b.name + ': ' + b.bytes.length + ' -> ' + sbytes.length + ' B (' +
+                    (100 * sbytes.length / b.bytes.length).toFixed(1) + '%), kept=' + r.kept +
+                    ' removed=' + r.removed + ', exports=' + sinfo.exports.length);
+    }
+
     /* emit the C header */
     let header = '/* lean_bundle.h — generated by tools/aot/build-lean.js */\n' +
                  '#ifndef LEAN_BUNDLE_H\n#define LEAN_BUNDLE_H\n' +
@@ -1000,12 +1157,12 @@ async function main() {
     header += '};\n\n';
     header += 'static const size_t lean_alias_count = sizeof(lean_aliases) / sizeof(lean_aliases[0]);\n\n';
     for (let i = 0; i < bakes.length; i++)
-        header += hexArray('lean_bake_' + i, bakes[i].bytes);
+        header += hexArray('lean_bake_' + i, bakeBytesOf(bakes[i]));
     header += '\ntypedef struct { const char *name; const unsigned char *data; unsigned long size; const char *symbols; } LeanBake;\n\n';
     header += 'static const LeanBake lean_bakes[] = {\n';
     for (let i = 0; i < bakes.length; i++) {
         header += '  { ' + cString(bakes[i].name) + ', lean_bake_' + i + ', ' +
-                  bakes[i].bytes.length + ', ' +
+                  bakeBytesOf(bakes[i]).length + ', ' +
                   cString(bakes[i].symbols.join(',')) + ' },\n';
     }
     header += '};\n\nstatic const size_t lean_bake_count = sizeof(lean_bakes) / sizeof(lean_bakes[0]);\n\n';
@@ -1059,7 +1216,7 @@ static MBJSValue lean_module_exists(MBJSContext *ctx, MBJSValueConst this_val,
     console.log('aliases          : ' + aliases.length);
     console.log('source bytes kept: 0 (JS is not embedded)');
     let bakeBytes = 0;
-    for (const b of bakes) bakeBytes += b.bytes.length;
+    for (const b of bakes) bakeBytes += bakeBytesOf(b).length;
     console.log('baked natives    : ' + bakes.length + ' (' + bakeBytes + ' B, embedded in the exe)');
     for (const b of bakes) {
         console.log('  ' + b.name + '  ' + b.bytes.length + ' B  exports=' +
