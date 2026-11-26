@@ -1,0 +1,34 @@
+{
+  "name": "mochinode_dynalib",
+  "version": "0.1.0",
+  "type": "native-engine-plugin",
+  "description": "Bridge from the embedded C99 libdynalib to JS (open/resolve/call symbols in any DLL)",
+  "status": "operational",
+  "entry_point": "mbjs_init_module",
+  "runtime_exports": [
+    "abiParse",
+    "callSymbol",
+    "closeModule",
+    "freeSymbol",
+    "lastError",
+    "moduleBase",
+    "moduleExports",
+    "openModule",
+    "resolveSymbol",
+    "symbolAbi",
+    "symbolBase",
+    "symbolOffset",
+    "symbolPtr"
+  ],
+  "sources": [
+    "native/mochinode_dynalib.c"
+  ],
+  "headers": [
+    "include/mochinode_dynalib_abi.h"
+  ],
+  "binaries": {
+    "x86_64-windows": "lib/mochinode_dynalib_x86_64.dll"
+  },
+  "js_binding": "node_modules/mochinode_dynalib",
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
+}

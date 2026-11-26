@@ -1,0 +1,22 @@
+{
+  "name": "mochiwasmy",
+  "version": "0.1.0",
+  "type": "native-engine-plugin",
+  "description": "WebAssembly bridge — PING only; no __wbg_* imports or global bridge yet",
+  "status": "stub",
+  "entry_point": "mbjs_init_module",
+  "runtime_exports": [
+    "ping"
+  ],
+  "sources": [
+    "native/mochiwasmy.c"
+  ],
+  "headers": [
+    "include/mochiwasmy_abi.h"
+  ],
+  "binaries": {
+    "x86_64-windows": "lib/mochiwasmy_x86_64.dll"
+  },
+  "js_binding": "node_modules/mochiwasmy",
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
+}

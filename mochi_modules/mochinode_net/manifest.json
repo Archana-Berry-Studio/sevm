@@ -1,0 +1,26 @@
+{
+  "name": "mochinode_net",
+  "version": "0.1.0",
+  "type": "native-engine-plugin",
+  "description": "Blocking TCP/HTTP server primitives over Winsock2 (httpServer/httpAccept/httpRead/httpWrite/httpClose)",
+  "status": "operational",
+  "entry_point": "mbjs_init_module",
+  "runtime_exports": [
+    "httpAccept",
+    "httpClose",
+    "httpRead",
+    "httpServer",
+    "httpWrite"
+  ],
+  "sources": [
+    "native/mochinode_net.c"
+  ],
+  "headers": [
+    "include/mochinode_net_abi.h"
+  ],
+  "binaries": {
+    "x86_64-windows": "lib/mochinode_net_x86_64.dll"
+  },
+  "js_binding": "node_modules/mochinode_net",
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
+}

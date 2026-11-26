@@ -1,0 +1,20 @@
+{
+  "name": "mochijsnative",
+  "version": "0.1.0",
+  "type": "native-engine-plugin",
+  "description": "AOT/JIT native probe helper — FAILS mbjs_call_module init on the current engine build",
+  "status": "broken",
+  "entry_point": "mbjs_init_module",
+  "runtime_exports": [],
+  "sources": [
+    "native/mochijsnative.c"
+  ],
+  "headers": [
+    "include/mochijsnative_abi.h"
+  ],
+  "binaries": {
+    "x86_64-windows": "lib/mochijsnative_x86_64.dll"
+  },
+  "js_binding": "node_modules/mochijsnative",
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
+}
