@@ -555,6 +555,114 @@ static MBJSValue ws_close(MBJSContext *ctx, MBJSValueConst this_val, int argc, M
     return MBJS_NewInt32(ctx, 0);
 }
 
+static MBJSValue ws_http_get(MBJSContext *ctx, MBJSValueConst this_val, int argc, MBJSValueConst *argv)
+{
+    (void)this_val;
+    if (argc < 1) return js_error(ctx, "httpGet needs url");
+    size_t urlLen = 0;
+    char *url = js_cstr_len(ctx, argv[0], &urlLen);
+    if (!url || urlLen == 0) { free(url); return js_error(ctx, "httpGet needs url"); }
+
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, url, -1, NULL, 0);
+    WCHAR *wurl = wlen > 0 ? (WCHAR *)malloc((size_t)wlen * sizeof(WCHAR)) : NULL;
+    if (!wurl) { free(url); return js_error(ctx, "httpGet url conversion failed"); }
+    MultiByteToWideChar(CP_UTF8, 0, url, -1, wurl, wlen);
+    free(url);
+
+    WCHAR scheme[32], host[512], path[8192], extra[1024];
+    URL_COMPONENTSW uc;
+    memset(&uc, 0, sizeof(uc));
+    uc.dwStructSize = sizeof(uc);
+    uc.lpszScheme = scheme; uc.dwSchemeLength = 32;
+    uc.lpszHostName = host; uc.dwHostNameLength = 512;
+    uc.lpszUrlPath = path; uc.dwUrlPathLength = 8192;
+    uc.lpszExtraInfo = extra; uc.dwExtraInfoLength = 1024;
+    scheme[0] = host[0] = path[0] = extra[0] = 0;
+    if (!WinHttpCrackUrl(wurl, 0, 0, &uc) || !host[0]) {
+        free(wurl);
+        return js_error(ctx, "httpGet bad url");
+    }
+    free(wurl);
+
+    BOOL secure = uc.nScheme == INTERNET_SCHEME_HTTPS;
+    INTERNET_PORT port = uc.nPort ? uc.nPort : (secure ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT);
+    HINTERNET session = WinHttpOpen(L"MochiWA/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                    WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    HINTERNET connect = NULL, request = NULL;
+    unsigned char *body = NULL;
+    char *json = NULL;
+    MBJSValue ret = MBJS_UNDEFINED;
+    size_t bodyLen = 0, bodyCap = 0;
+    DWORD status = 0;
+    const char *stage = "open";
+    DWORD errCode = 0;
+#define HTTP_FAIL(label) do { stage = (label); errCode = GetLastError(); goto http_done; } while (0)
+
+    if (!session) HTTP_FAIL("open");
+    WinHttpSetTimeouts(session, 10000, 10000, 20000, 30000);
+    connect = WinHttpConnect(session, host, port, 0);
+    if (!connect) HTTP_FAIL("connect");
+    request = WinHttpOpenRequest(connect, L"GET", path[0] ? path : L"/", NULL,
+                                 WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                 secure ? WINHTTP_FLAG_SECURE : 0);
+    if (!request) HTTP_FAIL("open_request");
+    if (!WinHttpSendRequest(request, NULL, 0, NULL, 0, 0, 0)) HTTP_FAIL("send");
+    if (!WinHttpReceiveResponse(request, NULL)) HTTP_FAIL("receive");
+
+    DWORD statusSize = sizeof(status);
+    WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                        WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX);
+
+    bodyCap = 4096;
+    body = (unsigned char *)malloc(bodyCap);
+    if (!body) HTTP_FAIL("alloc_body");
+    for (;;) {
+        DWORD avail = 0;
+        if (!WinHttpQueryDataAvailable(request, &avail) || avail == 0) break;
+        if (bodyLen + avail + 1 > bodyCap) {
+            while (bodyLen + avail + 1 > bodyCap) bodyCap *= 2;
+            unsigned char *tmp = (unsigned char *)realloc(body, bodyCap);
+            if (!tmp) HTTP_FAIL("grow_body");
+            body = tmp;
+        }
+        DWORD got = 0;
+        if (!WinHttpReadData(request, body + bodyLen, avail, &got) || got == 0) break;
+        bodyLen += got;
+    }
+    body[bodyLen] = 0;
+
+    size_t jsonCap = bodyLen * 2 + 256;
+    json = (char *)malloc(jsonCap);
+    if (!json) HTTP_FAIL("alloc_json");
+    int n = snprintf(json, jsonCap,
+                     "{\"status\":%lu,\"ok\":%s,\"stage\":\"ok\",\"error\":0,\"headers\":{},\"bodyHex\":\"",
+                     (unsigned long)status, (status >= 200 && status < 300) ? "true" : "false");
+    for (size_t i = 0; i < bodyLen && n > 0; i++) {
+        n += snprintf(json + n, jsonCap - (size_t)n, "%02x", body[i]);
+    }
+    if (n > 0) {
+        int tail = snprintf(json + n, jsonCap - (size_t)n, "\"}");
+        if (tail > 0) n += tail;
+    }
+    ret = js_str(ctx, json, (size_t)n);
+
+http_done:
+    if (request) WinHttpCloseHandle(request);
+    if (connect) WinHttpCloseHandle(connect);
+    if (session) WinHttpCloseHandle(session);
+    free(body);
+    free(json);
+    if (MBJS_IsUndefined(ret)) {
+        char message[128];
+        snprintf(message, sizeof(message), "httpGet failed at %s (%lu)", stage, (unsigned long)errCode);
+        fprintf(stderr, "[mochiws-http] %s host=%ls path=%ls port=%u secure=%d\n",
+                message, host, path[0] ? path : L"/", (unsigned)port, (int)secure);
+        return js_error(ctx, message);
+    }
+    return ret;
+#undef HTTP_FAIL
+}
+
 static int ws_mod_init(MBJSContext *ctx, MBJSModuleDef *m)
 {
     const MBJSCFunctionListEntry tab[] = {
@@ -562,6 +670,7 @@ static int ws_mod_init(MBJSContext *ctx, MBJSModuleDef *m)
         MBJS_CFUNC_DEF("send", 3, ws_send),
         MBJS_CFUNC_DEF("poll", 1, ws_poll),
         MBJS_CFUNC_DEF("close", 1, ws_close),
+        MBJS_CFUNC_DEF("httpGet", 1, ws_http_get),
     };
     return rt.SetModuleExportList(ctx, m, tab, (int)(sizeof(tab) / sizeof(tab[0])));
 }
@@ -573,6 +682,7 @@ MBJS_MODULE_EXTERN MBJSModuleDef *mbjs_init_module(MBJSContext *ctx, const char 
         MBJS_CFUNC_DEF("send", 3, ws_send),
         MBJS_CFUNC_DEF("poll", 1, ws_poll),
         MBJS_CFUNC_DEF("close", 1, ws_close),
+        MBJS_CFUNC_DEF("httpGet", 1, ws_http_get),
     };
     const char *missing = mbjs_runtime_resolve(&rt);
     MBJSModuleDef *m;
