@@ -19,6 +19,7 @@ inject with `setGlobal()`.
 | Memory limit | `MBJS_SetMemoryLimit` (runtime-wide) | `memLimit` option |
 | Instruction budget | `MBJS_SetInterruptHandler` (deadline check on VM back-edges) | `budgetMs` option |
 | No dynamic code | `eval`/`Function`/`constructor` chain neutralized | `strict: true` |
+| Microtask queue | per-realm job queue (`MBJS_ExecutePendingJob`) | `runAsync()` drains it |
 
 ## Layout
 
@@ -54,6 +55,10 @@ sb.free();
 - `Sandbox.setRawGlobal(name, literal)` — splice a pre-formed literal (`'42'`, `'[1,2,3]'`). Use with caution.
 - `Sandbox.run(source)` — evaluate as a global script; returns `JSON.stringify` of the completion value.
   Throws a host `Error` with the sandbox exception message on failure.
+- `Sandbox.runAsync(source)` — evaluate; if the completion value is a promise,
+  drain that realm's microtask queue (under the same deadline) and report
+  `{state:"fulfilled", value:...}` or `{state:"pending"}`. A rejected promise
+  throws on the host side with the rejection message.
 - `Sandbox.free()` — destroys the runtime + context (frees its GC heap).
 
 ## Boundary / limits (v0.1)
@@ -64,6 +69,10 @@ sb.free();
   serialized to JSON by the caller and re-parsed inside (`setRawGlobal`).
 - `run()` is a global script eval, not a module loader — no `import`/`require`
   resolution inside the sandbox in v0.1.
+- `runAsync()` evaluates synchronously and then resolves a returned promise; it
+  does **not** use `MBJS_EVAL_FLAG_ASYNC` (that path in this engine yields a
+  wrapper object instead of the settled value). Top-level `await` is therefore
+  not allowed — write `(async () => { ... })()`.
 - Host capabilities (`process`, `dynalib`, `mochi.*`) are **not** injected by
   default; add them deliberately via `setGlobal`/`setRawGlobal` if a policy
   allows it.

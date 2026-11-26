@@ -44,6 +44,12 @@ export class Sandbox {
   run(source) {
     return this._m.run(this._id, String(source));
   }
+  /* runAsync: eval an async global script, drain this realm's microtask queue,
+     then resolve the resulting promise. Returns {state, value} or
+     {state:"pending"}; a rejected promise throws here. */
+  runAsync(source) {
+    return JSON.parse(this._m.runAsync(this._id, String(source)));
+  }
   free() {
     this._m.free(this._id);
   }

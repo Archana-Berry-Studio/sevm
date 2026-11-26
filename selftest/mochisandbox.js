@@ -48,6 +48,25 @@ async function main() {
     check('strict denies constructor chain', denied);
     sb3.free();
 
+    /* async execution: microtask queue drained, promise settled per realm */
+    const sb4 = sandbox({ budgetMs: 5000 });
+    check('async fn awaited', sb4.asyncEval(
+        'async function f(){ return 40 + 2; } f()').value === 42);
+    check('chained microtasks', sb4.asyncEval(
+        'Promise.resolve(1).then(v => v * 2).then(v => v + 10)').state === 'fulfilled');
+    check('chained microtasks value',
+          sb4.asyncEval('Promise.resolve(1).then(v => v * 2).then(v => v + 10)').value === 12);
+    check('50 microtask ticks', sb4.asyncEval(
+        'let p = Promise.resolve(0); for (let i = 0; i < 50; i++) p = p.then(v => v + 1); p'
+    ).value === 50);
+    check('await inside async iife', sb4.asyncEval(
+        '(async () => { const a = await Promise.resolve(21); return a * 2; })()').value === 42);
+    check('non-promise value passes through', sb4.asyncEval('1 + 1').value === 2);
+    let rejected = false;
+    try { sb4.asyncEval('Promise.reject(new Error("boom"))'); } catch (e) { rejected = true; }
+    check('rejected promise throws', rejected);
+    sb4.free();
+
     /* free + lifecycle */
     check('count reports live sandboxes', typeof count() === 'number');
     sb.free();

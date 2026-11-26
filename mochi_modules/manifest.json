@@ -156,11 +156,12 @@
     },
     {
       "name": "mochisandbox",
-      "description": "Realm-isolated JS: fresh runtime+context per sandbox, memory limit, instruction budget, strict mode",
+      "description": "Realm-isolated JS: fresh runtime+context per sandbox, memory limit, instruction budget, strict mode, per-realm microtask queue",
       "exports": [
         "create",
         "setGlobal",
         "run",
+        "runAsync",
         "free",
         "count"
       ],

@@ -60,6 +60,12 @@ typedef struct SboxSym {
     int (*ToBool)(MBJSContext *ctx, MBJSValueConst v);
     void (*FreeValue)(MBJSContext *ctx, MBJSValue v);
     MBJSValue (*DupValue)(MBJSContext *ctx, MBJSValueConst v);
+    /* microtask / promise plumbing, so sandbox code can settle promises */
+    bool (*IsJobPending)(MBJSRuntime *rt);
+    int (*ExecutePendingJob)(MBJSRuntime *rt, MBJSContext **pctx);
+    int (*PromiseState)(MBJSContext *ctx, MBJSValueConst promise);
+    MBJSValue (*PromiseResult)(MBJSContext *ctx, MBJSValueConst promise);
+    void (*PromiseMarkAsHandled)(MBJSContext *ctx, MBJSValueConst promise);
 } SboxSym;
 
 static MBJSRuntime rt;          /* host runtime symbols (mbjs_runtime.h) */
@@ -111,8 +117,13 @@ static const char *sbox_resolve(void)
     SYM(ToFloat64, "MBJS_ToFloat64");
     SYM(ToBool, "MBJS_ToBool");
     SYM(FreeValue, "MBJS_FreeValue");
-    SYM(DupValue, "MBJS_DupValue");
-#undef SYM
+        SYM(DupValue, "MBJS_DupValue");
+        SYM(IsJobPending, "MBJS_IsJobPending");
+        SYM(ExecutePendingJob, "MBJS_ExecutePendingJob");
+        SYM(PromiseState, "MBJS_PromiseState");
+        SYM(PromiseResult, "MBJS_PromiseResult");
+        SYM(PromiseMarkAsHandled, "MBJS_PromiseMarkAsHandled");
+    #undef SYM
     sx_ready = 1;
     return NULL;
 }
@@ -409,6 +420,120 @@ static MBJSValue sbox_run(MBJSContext *ctx, MBJSValueConst this_val,
     }
 }
 
+/* convert any sandbox value to a malloc'd C string (borrowed-pointer safe) */
+static char *sbox_value_str(Sandbox *sb, MBJSValueConst v)
+{
+    size_t len = 0;
+    const char *p = sx.ToCStringLen2(sb->ctx2, &len, v, 0);
+    return copy_cstr(p, len);
+}
+
+/* runAsync(id, src) — evaluate a script in the realm; if the completion value
+   is a promise, drain that realm's microtask queue (under the same interrupt
+   deadline) and report the settled result.
+   Returns a JSON string:
+     {"state":"fulfilled","value":...}   settled OK (or a plain non-promise value)
+     {"state":"pending"}                still pending after the pump cap
+   A rejected promise throws on the host side with the rejection message. */
+#define SBOX_PUMP_MAX 10000
+static MBJSValue sbox_runAsync(MBJSContext *ctx, MBJSValueConst this_val,
+                               int argc, MBJSValueConst *argv)
+{
+    Sandbox *sb;
+    char *idstr = NULL, *src = NULL;
+    char *value = NULL;
+    int value_owned = 0;
+    MBJSValue v;
+    size_t srclen = 0;
+    int jobs = 0;
+    int st;
+
+    (void)this_val;
+    if (argc < 2) return host_error(ctx, "runAsync(id, source)");
+    idstr = host_cstr(ctx, argv[0], NULL);
+    src = host_cstr(ctx, argv[1], &srclen);
+    if (!idstr || !src) { free(idstr); free(src); return host_error(ctx, "arg parse"); }
+    sb = find_sbox((uint64_t)strtoull(idstr, NULL, 10));
+    if (!sb || !sb->alive) { free(idstr); free(src); return host_error(ctx, "unknown sandbox id"); }
+
+    sb->deadline_ms = sb->budget_ms > 0 ? (now_ms() + sb->budget_ms) : 0;
+    v = sbox_eval(sb, src, srclen, "<sandbox-async>", 0);
+    free(idstr); free(src);
+
+    if (MBJS_IsException(v)) {
+        char *msg = sbox_exc_message(sb);
+        sx.FreeValue(sb->ctx2, v);
+        if (msg) { MBJSValue e = host_error(ctx, msg); free(msg); return e; }
+        return host_error(ctx, "exception in sandbox");
+    }
+
+    /* PromiseState returns NOT_A_PROMISE (-1) for a non-promise value. */
+    st = sx.PromiseState(sb->ctx2, v);
+    if (st == MBJS_PROMISE_NOT_A_PROMISE) {
+        value = sbox_json(sb, v);
+        sx.FreeValue(sb->ctx2, v);
+        if (!value) value = (char *)"null";
+        else value_owned = 1;
+        goto fulfilled;
+    }
+
+    /* It is a promise: run this realm's microtasks. Each job re-enters the VM,
+       so the interrupt handler keeps enforcing the same deadline. A job that
+       throws must be cleared, else the realm keeps a pending exception. */
+    while (jobs < SBOX_PUMP_MAX && sx.IsJobPending(sb->rt2)) {
+        MBJSContext *jc = NULL;
+        MBJSValue exc;
+        if (!sx.ExecutePendingJob(sb->rt2, &jc))
+            break;
+        if (++jobs >= SBOX_PUMP_MAX)
+            break;
+        exc = sx.GetException(sb->ctx2);
+        if (!MBJS_IsException(exc))
+            sx.FreeValue(sb->ctx2, exc);
+    }
+
+    sx.PromiseMarkAsHandled(sb->ctx2, v);
+    st = sx.PromiseState(sb->ctx2, v);
+    if (st == MBJS_PROMISE_REJECTED) {
+        char *reason = NULL;
+        MBJSValue r = sx.PromiseResult(sb->ctx2, v);
+        if (!MBJS_IsException(r)) {
+            reason = sbox_value_str(sb, r);
+            sx.FreeValue(sb->ctx2, r);
+        }
+        sx.FreeValue(sb->ctx2, v);
+        if (reason) { MBJSValue e = host_error(ctx, reason); free(reason); return e; }
+        return host_error(ctx, "promise rejected in sandbox");
+    }
+    if (st == MBJS_PROMISE_FULFILLED) {
+        MBJSValue r = sx.PromiseResult(sb->ctx2, v);
+        if (!MBJS_IsException(r)) {
+            value = sbox_json(sb, r);
+            sx.FreeValue(sb->ctx2, r);
+            if (!value) value = (char *)"null";
+            else value_owned = 1;
+        }
+    }
+    sx.FreeValue(sb->ctx2, v);
+
+fulfilled:
+    if (!value) {
+        MBJSValue ret = host_str(ctx, "{\"state\":\"pending\"}", 22);
+        return ret;
+    }
+    {
+        char buf[16384];
+        int n = snprintf(buf, sizeof(buf),
+                         "{\"state\":\"fulfilled\",\"value\":%s}", value);
+        MBJSValue ret;
+        if (value_owned) free(value);
+        if (n < 0 || (size_t)n >= sizeof(buf))
+            return host_error(ctx, "result too large");
+        ret = host_str(ctx, buf, (size_t)n);
+        return ret;
+    }
+}
+
 static MBJSValue sbox_free(MBJSContext *ctx, MBJSValueConst this_val,
                            int argc, MBJSValueConst *argv)
 {
@@ -447,6 +572,7 @@ static const MBJSCFunctionListEntry sbox_tab[] = {
     MBJS_CFUNC_DEF("create", 1, sbox_create),
     MBJS_CFUNC_DEF("setGlobal", 3, sbox_setGlobal),
     MBJS_CFUNC_DEF("run", 2, sbox_run),
+    MBJS_CFUNC_DEF("runAsync", 2, sbox_runAsync),
     MBJS_CFUNC_DEF("free", 1, sbox_free),
     MBJS_CFUNC_DEF("count", 0, sbox_count),
 };
