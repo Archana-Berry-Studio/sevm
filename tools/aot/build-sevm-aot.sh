@@ -39,7 +39,19 @@
 set -eu
 
 ENGINE="${ENGINE_ROOT:-/e/bcf/mochiberry}"
-OUT="${1:-/e/sevm/build_ex/engine_sevm_aot}"
+if [ "${SEVM_AOT_DEBUG:-0}" = "1" ]; then
+  OUT="${1:-/e/sevm/build_ex/engine_sevm_aot_debug}"
+  # A debug build is the full engine: the parser stays in (the remote
+  # debugger evals expressions with MBJS_Eval), so the binary is larger.
+  # Feature guards below are only applied to the release profile.
+  DEFS=""
+else
+  OUT="${1:-/e/sevm/build_ex/engine_sevm_aot}"
+  DEFS="-DMBJS_DISABLE_PARSER \
+        -DMBJS_NO_DATE -DMBJS_NO_PROXY -DMBJS_NO_MAPSET \
+        -DMBJS_NO_WEAKREF -DMBJS_NO_ATOB \
+        -DMBJS_NO_PERFORMANCE -DMBJS_NO_DOM_EXCEPTION -DMBJS_NO_ATOMICS"
+fi
 WLDIR="/c/Users/Administrator/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.MCF.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin"
 CC="$WLDIR/gcc.exe"
 AR="$WLDIR/ar.exe"
@@ -54,14 +66,19 @@ OUT_WIN="$(mkdir -p "$OUT" && cd "$OUT" && pwd -W)"
 # KEEP: RegExp (mochinode/index.js uses regex literals) and TypedArrays
 # (mochinode/lib/process.js uses Uint8Array/ArrayBuffer).  Dropping either
 # breaks the app at compile time.
-DEFS="-DMBJS_DISABLE_PARSER \
-      -DMBJS_NO_DATE -DMBJS_NO_PROXY -DMBJS_NO_MAPSET \
-      -DMBJS_NO_WEAKREF -DMBJS_NO_ATOB \
-      -DMBJS_NO_PERFORMANCE -DMBJS_NO_DOM_EXCEPTION -DMBJS_NO_ATOMICS"
 
-CFLAGS="-Os -std=gnu11 -D_GNU_SOURCE -I$ENGINE_WIN \
-        -ffunction-sections -fdata-sections \
-        -fno-asynchronous-unwind-tables -fno-ident -fno-jump-tables"
+
+if [ "${SEVM_AOT_DEBUG:-0}" = "1" ]; then
+  # Debug flavour: no optimisation and full DWARF, so a stack trace names
+  # the engine's own source file and line instead of a mangled offset.
+  CFLAGS="-O0 -g3 -std=gnu11 -D_GNU_SOURCE -I$ENGINE_WIN \
+          -ffunction-sections -fdata-sections \
+          -fno-asynchronous-unwind-tables -fno-ident -fno-jump-tables"
+else
+  CFLAGS="-Os -std=gnu11 -D_GNU_SOURCE -I$ENGINE_WIN \
+          -ffunction-sections -fdata-sections \
+          -fno-asynchronous-unwind-tables -fno-ident -fno-jump-tables"
+fi
 
 LDFLAGS="-Wl,--gc-sections"
 

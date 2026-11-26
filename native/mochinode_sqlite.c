@@ -46,6 +46,8 @@ typedef int (*sq_step_t)(sqlite3_stmt *);
 typedef int (*sq_col_count_t)(sqlite3_stmt *);
 typedef const char *(*sq_col_name_t)(sqlite3_stmt *, int);
 typedef const unsigned char *(*sq_col_text_t)(sqlite3_stmt *, int);
+typedef const void *(*sq_col_blob_t)(sqlite3_stmt *, int);
+typedef int (*sq_col_bytes_t)(sqlite3_stmt *, int);
 typedef int (*sq_col_int_t)(sqlite3_stmt *, int);
 typedef double (*sq_col_double_t)(sqlite3_stmt *, int);
 typedef int (*sq_col_type_t)(sqlite3_stmt *, int);
@@ -63,6 +65,8 @@ static sq_step_t       sq_step;
 static sq_col_count_t  sq_col_count;
 static sq_col_name_t   sq_col_name;
 static sq_col_text_t   sq_col_text;
+static sq_col_blob_t   sq_col_blob;
+static sq_col_bytes_t  sq_col_bytes;
 static sq_col_int_t    sq_col_int;
 static sq_col_double_t sq_col_double;
 static sq_col_type_t   sq_col_type;
@@ -115,6 +119,8 @@ static int sq_load(void)
     SQ_SYM(sq_col_count, "sqlite3_column_count");
     SQ_SYM(sq_col_name, "sqlite3_column_name");
     SQ_SYM(sq_col_text, "sqlite3_column_text");
+    SQ_SYM(sq_col_blob, "sqlite3_column_blob");
+    SQ_SYM(sq_col_bytes, "sqlite3_column_bytes");
     SQ_SYM(sq_col_int, "sqlite3_column_int");
     SQ_SYM(sq_col_double, "sqlite3_column_double");
     SQ_SYM(sq_col_type, "sqlite3_column_type");
@@ -274,8 +280,40 @@ static MBJSValue sq_col_text_fn(MBJSContext *ctx, MBJSValueConst this_val,
                 : MBJS_UNDEFINED;
 }
 
+static MBJSValue sq_col_blob_hex_fn(MBJSContext *ctx, MBJSValueConst this_val,
+                                    int argc, MBJSValueConst *argv)
+{
+    static const char digits[] = "0123456789abcdef";
+    void *st = NULL;
+    double idx = 0;
+    const unsigned char *blob;
+    int bytes;
+    int i;
+    char *hex;
+    MBJSValue out;
+    (void)this_val;
+    if (argc < 2 || js_to_ptr(ctx, argv[0], &st) < 0 ||
+        rt.ToFloat64(ctx, &idx, argv[1]) < 0)
+        return rt.NewStringLen(ctx, "", 0);
+    blob = (const unsigned char *)sq_col_blob((sqlite3_stmt *)st, (int)idx);
+    bytes = sq_col_bytes((sqlite3_stmt *)st, (int)idx);
+    if (!blob || bytes <= 0)
+        return rt.NewStringLen(ctx, "", 0);
+    hex = (char *)malloc((size_t)bytes * 2 + 1);
+    if (!hex)
+        return MBJS_UNDEFINED;
+    for (i = 0; i < bytes; i++) {
+        hex[i * 2] = digits[(blob[i] >> 4) & 0xf];
+        hex[i * 2 + 1] = digits[blob[i] & 0xf];
+    }
+    hex[bytes * 2] = '\0';
+    out = rt.NewStringLen(ctx, hex, (size_t)bytes * 2);
+    free(hex);
+    return out;
+}
+
 static MBJSValue sq_col_int_fn(MBJSContext *ctx, MBJSValueConst this_val,
-                               int argc, MBJSValueConst *argv)
+                                int argc, MBJSValueConst *argv)
 {
     void *st = NULL;
     double idx = 0;
@@ -347,7 +385,7 @@ static MBJSValue sq_errmsg_fn(MBJSContext *ctx, MBJSValueConst this_val,
 /* module plumbing                                                     */
 /* ------------------------------------------------------------------ */
 
-#define SQ_TAB_LEN 14
+#define SQ_TAB_LEN 15
 
 static const MBJSCFunctionListEntry sq_tab[SQ_TAB_LEN] = {
     MBJS_CFUNC_DEF("version", 0, sq_version_fn),
@@ -358,6 +396,7 @@ static const MBJSCFunctionListEntry sq_tab[SQ_TAB_LEN] = {
     MBJS_CFUNC_DEF("columnCount", 1, sq_col_count_fn),
     MBJS_CFUNC_DEF("columnName", 2, sq_col_name_fn),
     MBJS_CFUNC_DEF("columnText", 2, sq_col_text_fn),
+    MBJS_CFUNC_DEF("columnBlobHex", 2, sq_col_blob_hex_fn),
     MBJS_CFUNC_DEF("columnInt", 2, sq_col_int_fn),
     MBJS_CFUNC_DEF("columnDouble", 2, sq_col_double_fn),
     MBJS_CFUNC_DEF("columnType", 2, sq_col_type_fn),
