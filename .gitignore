@@ -17,3 +17,6 @@ native/*.dll
 # OS noise
 Thumbs.db
 .DS_Store
+
+# engine build output (not source)
+build_ex/

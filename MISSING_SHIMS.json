@@ -1,5 +1,15 @@
 {
-  "version": 1,
+  "version": 2,
+  "_meta": {
+    "status_semantics": {
+      "done": "implemented AND exercised on E:/bcf/mochiberry/build_manual/mbjs.exe this session",
+      "partial": "core implemented, remaining documented sub-gaps",
+      "todo": "still missing / still unsupported",
+      "broken": "present but fails to load or run on the current engine build"
+    },
+    "reconciled": "2026-11-27",
+    "note": "v1 wrongly marked timers/globals/mochifetch as 'done' while the modules did not exist on disk (setTimeout was undefined). v2 statuses are backed by measured runs, not intent. Regenerate derived docs with script/gen_manifests.py."
+  },
   "entries": [
     {
       "id": "timers",
@@ -7,7 +17,7 @@
       "layer": "node_modules",
       "status": "done",
       "priority": "high",
-      "note": "setTimeout/setInterval wrappers over mbjs:os"
+      "note": "setTimeout/setInterval/clearTimeout/clearInterval over mbjs:os, installed as globals; async fire verified (elapsed>=45ms)."
     },
     {
       "id": "globals",
@@ -15,23 +25,23 @@
       "layer": "node_modules",
       "status": "done",
       "priority": "high",
-      "note": "URL, TextEncoder, AbortController, timer globals"
+      "note": "URL/URLSearchParams/TextEncoder/TextDecoder/AbortController/AbortSignal/structuredClone/globals; crypto.subtle.digest(SHA-256,'abc') matches known hash. require() installs globals too."
     },
     {
       "id": "fetch",
-      "module": "mochifetch",
+      "module": "mochiglobals",
       "layer": "node_modules",
       "status": "done",
       "priority": "high",
-      "note": "fetch GET/HEAD over mochiws.httpGet"
+      "note": "global fetch GET/HEAD over mochiws.httpGet (WinHTTP). POST/PUT/PATCH throw. No standalone mochifetch module — fetch ships inside mochiglobals."
     },
     {
       "id": "https",
       "module": "mochihttps",
       "layer": "node_modules",
-      "status": "done",
+      "status": "todo",
       "priority": "high",
-      "note": "https.request/get delegate to mochihttp WinHTTP"
+      "note": "PREVIOUS 'done' WAS WRONG: node_modules/mochihttps/index.js request()/get() still emit MOCHI_UNSUPPORTED (no TLS write path)."
     },
     {
       "id": "net-connect",
@@ -39,7 +49,7 @@
       "layer": "node_modules",
       "status": "todo",
       "priority": "high",
-      "note": "Socket.connect and createServer still unsupported"
+      "note": "Socket.connect and createServer still unsupported in JS; needs a client connect export in mochinode_net (server-side httpServer exists)."
     },
     {
       "id": "tls-connect",
@@ -47,7 +57,7 @@
       "layer": "node_modules",
       "status": "todo",
       "priority": "medium",
-      "note": "TLSSocket.connect still unsupported"
+      "note": "TLSSocket.connect still unsupported; marker class only."
     },
     {
       "id": "http-methods",
@@ -55,7 +65,7 @@
       "layer": "node_modules",
       "status": "todo",
       "priority": "high",
-      "note": "POST/PUT/PATCH and request bodies need native WinHTTP write support"
+      "note": "Only GET is reachable (mochiws.httpGet). POST/PUT/PATCH + request bodies need native WinHTTP write support."
     },
     {
       "id": "http-server",
@@ -63,7 +73,7 @@
       "layer": "node_modules",
       "status": "done",
       "priority": "low",
-      "note": "createServer intentionally delegated to node_modules/net"
+      "note": "createServer intentionally delegated to node_modules/net over mochinode_net.dll."
     },
     {
       "id": "express-complete",
@@ -71,7 +81,7 @@
       "layer": "node_modules",
       "status": "todo",
       "priority": "medium",
-      "note": "middleware chains, body parsing, static files, templates"
+      "note": "middleware chains, body parsing, static files, templates still open."
     },
     {
       "id": "sqlite-bind",
@@ -79,7 +89,7 @@
       "layer": "node_modules",
       "status": "todo",
       "priority": "high",
-      "note": "prepared statement bind parameters not wired"
+      "note": "MEASURED: mochinode_sqlite.dll has NO bind export (close/column*/exec/finalize/open/prepare/step/version only). Prepared-statement placeholders are unbound."
     },
     {
       "id": "worker-threads",
@@ -87,15 +97,15 @@
       "layer": "node_modules",
       "status": "todo",
       "priority": "low",
-      "note": "Worker unavailable"
+      "note": "Worker constructor throws unavailable; isMainThread is hardcoded true."
     },
     {
       "id": "process-metrics",
       "module": "mochiprocess",
       "layer": "node_modules",
-      "status": "todo",
+      "status": "partial",
       "priority": "medium",
-      "note": "cpus/totalmem/freemem still stubs"
+      "note": "DONE: arch (reported, override via __MOCHI_ARCH__), uptime, exit() fixed (was throwing on unimported std). STILL STUB: os.cpus/totalmem/freemem, memoryUsage/cpuUsage return zeros (engine exposes no RSS/CPU ABI — do not fake values)."
     },
     {
       "id": "dynalib-pingc",
@@ -103,7 +113,7 @@
       "layer": "node_modules",
       "status": "todo",
       "priority": "low",
-      "note": "opts.pinGc and opts.lazy accepted but not implemented"
+      "note": "opts.pinGc and opts.lazy accepted but not implemented."
     },
     {
       "id": "wasm-globals",
@@ -111,7 +121,23 @@
       "layer": "mochi_modules",
       "status": "todo",
       "priority": "medium",
-      "note": "WebAssembly global bridge with ~91 __wbg_* imports still pending"
+      "note": "MEASURED: mochiwasmy.dll exports only 'ping'. WebAssembly global bridge and ~91 __wbg_* imports are absent."
+    },
+    {
+      "id": "zlib-gzip-raw",
+      "module": "mochizlib",
+      "layer": "mochi_modules",
+      "status": "todo",
+      "priority": "high",
+      "note": "MEASURED: native exports only deflateHex/inflateHex (zlib format). gunzipSync(b'1f8b0800..') throws 'inflate failed'. Need gzip/gunzip framing + raw deflate (windowBits) for node:zlib parity."
+    },
+    {
+      "id": "mochijsnative-init",
+      "module": "mochijsnative",
+      "layer": "mochi_modules",
+      "status": "broken",
+      "priority": "medium",
+      "note": "MEASURED: loadNative('mochijsnative.dll') -> \"mbjs_call_module '.../mochijsnative.dll' initialization error\". Fix mbjs_init_module or replace with the stub."
     }
   ]
 }

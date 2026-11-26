@@ -1,3 +1,4 @@
+import '../node_modules/mochiglobals/index.js';
 import { EventEmitter } from '../mochievents/index.js';
 import * as ws from '../mochiws/index.js';
 import { MochiBuffer as Buffer } from '../mochibuffer/index.js';

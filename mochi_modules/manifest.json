@@ -1,0 +1,158 @@
+{
+  "name": "sevm-mochi-modules",
+  "version": "0.1.0",
+  "description": "Native engine plugins for MochiBerry (SEVM). Native-first: DLL/so/dylib.",
+  "generated": "2026-11-27",
+  "abi": {
+    "entry_point": "mbjs_init_module",
+    "engine_symbol_resolution": "native/mbjs_runtime.h (host image symbols)",
+    "forbidden": "plugin must not import mbjs.exe directly (Windows error 126)"
+  },
+  "platform_bins": {
+    "windows": "_x86_64.dll",
+    "linux": "_x86_64.so / _aarch64.so",
+    "darwin": "_x86_64.dylib / _arm64.dylib"
+  },
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe",
+  "modules": [
+    {
+      "name": "mochicrypto",
+      "description": "OpenSSL-grade hash/HMAC/PBKDF2/AES primitives, C99 over the engine host image",
+      "exports": [
+        "aesCbcDecryptHex",
+        "aesCbcEncryptHex",
+        "aesCtrCryptHex",
+        "aesGcmDecryptHex",
+        "aesGcmEncryptHex",
+        "hmacSha1Hex",
+        "hmacSha256Hex",
+        "hmacSha512Hex",
+        "md5Hex",
+        "pbkdf2Hex",
+        "randomHex",
+        "sha1Hex",
+        "sha256Hex",
+        "sha384Hex",
+        "sha512Hex",
+        "timingSafeEqual"
+      ],
+      "status": "verified",
+      "path": "mochi_modules/mochicrypto"
+    },
+    {
+      "name": "mochifs",
+      "description": "Filesystem primitives (read/write/stat/readdir/copy/rename/remove/mkdir) via host image",
+      "exports": [
+        "appendText",
+        "copyFile",
+        "cwd",
+        "exists",
+        "mkdir",
+        "readText",
+        "readdir",
+        "remove",
+        "rename",
+        "stat",
+        "writeText"
+      ],
+      "status": "verified",
+      "path": "mochi_modules/mochifs"
+    },
+    {
+      "name": "mochizlib",
+      "description": "zlib deflate/inflate (zlib format). gzip/raw framing NOT implemented — inflateHex/deflateHex only",
+      "exports": [
+        "deflateHex",
+        "inflateHex"
+      ],
+      "status": "operational",
+      "path": "mochi_modules/mochizlib"
+    },
+    {
+      "name": "mochinode_net",
+      "description": "Blocking TCP/HTTP server primitives over Winsock2 (httpServer/httpAccept/httpRead/httpWrite/httpClose)",
+      "exports": [
+        "httpAccept",
+        "httpClose",
+        "httpRead",
+        "httpServer",
+        "httpWrite"
+      ],
+      "status": "operational",
+      "path": "mochi_modules/mochinode_net"
+    },
+    {
+      "name": "mochinode_sqlite",
+      "description": "SQLite bridge (libsqlite3/sqlite3.dll). NOTE: no statement-bind export — placeholders unbound",
+      "exports": [
+        "close",
+        "columnBlobHex",
+        "columnCount",
+        "columnDouble",
+        "columnInt",
+        "columnName",
+        "columnText",
+        "columnType",
+        "errmsg",
+        "exec",
+        "finalize",
+        "open",
+        "prepare",
+        "step",
+        "version"
+      ],
+      "status": "operational",
+      "path": "mochi_modules/mochinode_sqlite"
+    },
+    {
+      "name": "mochinode_dynalib",
+      "description": "Bridge from the embedded C99 libdynalib to JS (open/resolve/call symbols in any DLL)",
+      "exports": [
+        "abiParse",
+        "callSymbol",
+        "closeModule",
+        "freeSymbol",
+        "lastError",
+        "moduleBase",
+        "moduleExports",
+        "openModule",
+        "resolveSymbol",
+        "symbolAbi",
+        "symbolBase",
+        "symbolOffset",
+        "symbolPtr"
+      ],
+      "status": "operational",
+      "path": "mochi_modules/mochinode_dynalib"
+    },
+    {
+      "name": "mochiws",
+      "description": "WebSocket client + WinHTTP GET (connect/poll/send/close/httpGet)",
+      "exports": [
+        "close",
+        "connect",
+        "httpGet",
+        "poll",
+        "send"
+      ],
+      "status": "operational",
+      "path": "mochi_modules/mochiws"
+    },
+    {
+      "name": "mochiwasmy",
+      "description": "WebAssembly bridge — PING only; no __wbg_* imports or global bridge yet",
+      "exports": [
+        "ping"
+      ],
+      "status": "stub",
+      "path": "mochi_modules/mochiwasmy"
+    },
+    {
+      "name": "mochijsnative",
+      "description": "AOT/JIT native probe helper — FAILS mbjs_call_module init on the current engine build",
+      "exports": [],
+      "status": "broken",
+      "path": "mochi_modules/mochijsnative"
+    }
+  ]
+}
