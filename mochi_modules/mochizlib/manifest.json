@@ -1,0 +1,23 @@
+{
+  "name": "mochizlib",
+  "version": "0.1.0",
+  "type": "native-engine-plugin",
+  "description": "zlib deflate/inflate (zlib format). gzip/raw framing NOT implemented — inflateHex/deflateHex only",
+  "status": "operational",
+  "entry_point": "mbjs_init_module",
+  "runtime_exports": [
+    "deflateHex",
+    "inflateHex"
+  ],
+  "sources": [
+    "native/mochizlib.c"
+  ],
+  "headers": [
+    "include/mochizlib_abi.h"
+  ],
+  "binaries": {
+    "x86_64-windows": "lib/mochizlib_x86_64.dll"
+  },
+  "js_binding": "node_modules/mochizlib",
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
+}
