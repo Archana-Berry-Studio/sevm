@@ -39,7 +39,7 @@ static MBJSValue js_str(MBJSContext *ctx, const char *s, size_t len)
 static MBJSValue js_error(MBJSContext *ctx, const char *what)
 {
     rt.ThrowTypeError(ctx, "mochicrypto: %s", what);
-    return MBJS_UNDEFINED;
+    return MBJS_EXCEPTION; /* contract: a C func that threw MUST return MBJS_EXCEPTION */
 }
 
 static double js_number(MBJSContext *ctx, MBJSValueConst v)
@@ -147,7 +147,7 @@ static MBJSValue hash_hex(MBJSContext *ctx, LPCWSTR alg, MBJSValueConst value)
     DWORD result_len = 0;
     NTSTATUS status;
     MBJSValue out;
-    if (!data) return MBJS_UNDEFINED;
+    if (!data) return MBJS_EXCEPTION;
     status = BCryptOpenAlgorithmProvider(&hAlg, alg, NULL, 0);
     if (!BCRYPT_SUCCESS(status)) goto fail;
     status = BCryptGetProperty(hAlg, BCRYPT_OBJECT_LENGTH, (PUCHAR)&obj_len, sizeof(obj_len), &result_len, 0);
@@ -197,7 +197,7 @@ static MBJSValue hmac_hex(MBJSContext *ctx, LPCWSTR alg, MBJSValueConst keyValue
     if (!key || !data) {
         free(key);
         free(data);
-        return MBJS_UNDEFINED;
+        return MBJS_EXCEPTION;
     }
     status = BCryptOpenAlgorithmProvider(&hAlg, alg, NULL, BCRYPT_ALG_HANDLE_HMAC_FLAG);
     if (!BCRYPT_SUCCESS(status)) goto fail;
@@ -287,7 +287,7 @@ static MBJSValue crypto_pbkdf2(MBJSContext *ctx, MBJSValueConst this_val, int ar
     if (!pwd || !salt) {
         free(pwd);
         free(salt);
-        return MBJS_UNDEFINED;
+        return MBJS_EXCEPTION;
     }
     iterations = (ULONGLONG)js_number(ctx, argv[2]);
     key_len = (ULONG)js_number(ctx, argv[3]);
@@ -597,7 +597,7 @@ static MBJSValue crypto_timing_safe_equal(MBJSContext *ctx, MBJSValueConst this_
     if (argc < 2) return js_error(ctx, "timingSafeEqual needs two values");
     a = hex_bytes(ctx, argv[0], &a_len);
     b = hex_bytes(ctx, argv[1], &b_len);
-    if (!a || !b) { free(a); free(b); return MBJS_UNDEFINED; }
+    if (!a || !b) { free(a); free(b); return MBJS_EXCEPTION; }
     if (a_len != b_len) equal = 0;
     for (i = 0; i < a_len || i < b_len; i++) {
         unsigned char x = i < a_len ? a[i] : 0;

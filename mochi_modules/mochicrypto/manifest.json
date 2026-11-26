@@ -1,0 +1,37 @@
+{
+  "name": "mochicrypto",
+  "version": "0.1.0",
+  "type": "native-engine-plugin",
+  "description": "OpenSSL-grade hash/HMAC/PBKDF2/AES primitives, C99 over the engine host image",
+  "status": "verified",
+  "entry_point": "mbjs_init_module",
+  "runtime_exports": [
+    "aesCbcDecryptHex",
+    "aesCbcEncryptHex",
+    "aesCtrCryptHex",
+    "aesGcmDecryptHex",
+    "aesGcmEncryptHex",
+    "hmacSha1Hex",
+    "hmacSha256Hex",
+    "hmacSha512Hex",
+    "md5Hex",
+    "pbkdf2Hex",
+    "randomHex",
+    "sha1Hex",
+    "sha256Hex",
+    "sha384Hex",
+    "sha512Hex",
+    "timingSafeEqual"
+  ],
+  "sources": [
+    "native/mochicrypto.c"
+  ],
+  "headers": [
+    "include/mochicrypto_abi.h"
+  ],
+  "binaries": {
+    "x86_64-windows": "lib/mochicrypto_x86_64.dll"
+  },
+  "js_binding": "node_modules/mochicrypto",
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
+}
