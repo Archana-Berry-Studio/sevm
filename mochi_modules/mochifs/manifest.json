@@ -1,0 +1,32 @@
+{
+  "name": "mochifs",
+  "version": "0.1.0",
+  "type": "native-engine-plugin",
+  "description": "Filesystem primitives (read/write/stat/readdir/copy/rename/remove/mkdir) via host image",
+  "status": "verified",
+  "entry_point": "mbjs_init_module",
+  "runtime_exports": [
+    "appendText",
+    "copyFile",
+    "cwd",
+    "exists",
+    "mkdir",
+    "readText",
+    "readdir",
+    "remove",
+    "rename",
+    "stat",
+    "writeText"
+  ],
+  "sources": [
+    "native/mochifs.c"
+  ],
+  "headers": [
+    "include/mochifs_abi.h"
+  ],
+  "binaries": {
+    "x86_64-windows": "lib/mochifs_x86_64.dll"
+  },
+  "js_binding": "node_modules/mochifs",
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
+}

@@ -45,7 +45,7 @@ static MBJSValue js_str(MBJSContext *ctx, const char *s, size_t len)
 static MBJSValue js_error(MBJSContext *ctx, const char *what)
 {
     rt.ThrowTypeError(ctx, "mochifs: %s", what);
-    return MBJS_UNDEFINED;
+    return MBJS_EXCEPTION; /* contract: a C func that threw MUST return MBJS_EXCEPTION */
 }
 
 static void append(char **buf, size_t *cap, size_t *len, const char *s, size_t n)
