@@ -153,6 +153,19 @@
       "exports": [],
       "status": "broken",
       "path": "mochi_modules/mochijsnative"
+    },
+    {
+      "name": "mochisandbox",
+      "description": "Realm-isolated JS: fresh runtime+context per sandbox, memory limit, instruction budget, strict mode",
+      "exports": [
+        "create",
+        "setGlobal",
+        "run",
+        "free",
+        "count"
+      ],
+      "status": "verified",
+      "path": "mochi_modules/mochisandbox"
     }
   ]
 }

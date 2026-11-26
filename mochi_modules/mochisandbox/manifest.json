@@ -1,0 +1,13 @@
+{
+  "name": "mochisandbox",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Realm-isolated JS execution: fresh runtime+context per sandbox, memory limit, instruction budget, strict mode.",
+  "native": true,
+  "arch": ["x86_64", "aarch64"],
+  "entry": "script/index.js",
+  "test": "script/test.js",
+  "exports": ["create", "setGlobal", "run", "free", "count"],
+  "author": "Nonamey / Mochi-Berry",
+  "license": "MIT"
+}
