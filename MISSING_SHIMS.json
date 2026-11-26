@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "timers",
+      "module": "mochitimers",
+      "layer": "node_modules",
+      "status": "done",
+      "priority": "high",
+      "note": "setTimeout/setInterval wrappers over mbjs:os"
+    },
+    {
+      "id": "globals",
+      "module": "mochiglobals",
+      "layer": "node_modules",
+      "status": "done",
+      "priority": "high",
+      "note": "URL, TextEncoder, AbortController, timer globals"
+    },
+    {
+      "id": "fetch",
+      "module": "mochifetch",
+      "layer": "node_modules",
+      "status": "done",
+      "priority": "high",
+      "note": "fetch GET/HEAD over mochiws.httpGet"
+    },
+    {
+      "id": "https",
+      "module": "mochihttps",
+      "layer": "node_modules",
+      "status": "done",
+      "priority": "high",
+      "note": "https.request/get delegate to mochihttp WinHTTP"
+    },
+    {
+      "id": "net-connect",
+      "module": "mochinet",
+      "layer": "node_modules",
+      "status": "todo",
+      "priority": "high",
+      "note": "Socket.connect and createServer still unsupported"
+    },
+    {
+      "id": "tls-connect",
+      "module": "mochitls",
+      "layer": "node_modules",
+      "status": "todo",
+      "priority": "medium",
+      "note": "TLSSocket.connect still unsupported"
+    },
+    {
+      "id": "http-methods",
+      "module": "mochihttp",
+      "layer": "node_modules",
+      "status": "todo",
+      "priority": "high",
+      "note": "POST/PUT/PATCH and request bodies need native WinHTTP write support"
+    },
+    {
+      "id": "http-server",
+      "module": "mochihttp",
+      "layer": "node_modules",
+      "status": "done",
+      "priority": "low",
+      "note": "createServer intentionally delegated to node_modules/net"
+    },
+    {
+      "id": "express-complete",
+      "module": "express",
+      "layer": "node_modules",
+      "status": "todo",
+      "priority": "medium",
+      "note": "middleware chains, body parsing, static files, templates"
+    },
+    {
+      "id": "sqlite-bind",
+      "module": "sqlite",
+      "layer": "node_modules",
+      "status": "todo",
+      "priority": "high",
+      "note": "prepared statement bind parameters not wired"
+    },
+    {
+      "id": "worker-threads",
+      "module": "mochiworker_threads",
+      "layer": "node_modules",
+      "status": "todo",
+      "priority": "low",
+      "note": "Worker unavailable"
+    },
+    {
+      "id": "process-metrics",
+      "module": "mochiprocess",
+      "layer": "node_modules",
+      "status": "todo",
+      "priority": "medium",
+      "note": "cpus/totalmem/freemem still stubs"
+    },
+    {
+      "id": "dynalib-pingc",
+      "module": "dynalib",
+      "layer": "node_modules",
+      "status": "todo",
+      "priority": "low",
+      "note": "opts.pinGc and opts.lazy accepted but not implemented"
+    },
+    {
+      "id": "wasm-globals",
+      "module": "mochiwasmy",
+      "layer": "mochi_modules",
+      "status": "todo",
+      "priority": "medium",
+      "note": "WebAssembly global bridge with ~91 __wbg_* imports still pending"
+    }
+  ]
+}
