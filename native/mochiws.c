@@ -60,7 +60,7 @@ static MBJSValue js_error(MBJSContext *ctx, const char *what)
 {
     if (mochiws_dbg()) fprintf(stderr, "[mochiws-dbg] js_error('%s')\n", what);
     rt.ThrowTypeError(ctx, "mochiws: %s", what);
-    return MBJS_UNDEFINED;
+    return MBJS_EXCEPTION; /* contract: a C func that threw MUST return MBJS_EXCEPTION */
 }
 
 static double js_number(MBJSContext *ctx, MBJSValueConst v)

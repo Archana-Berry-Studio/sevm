@@ -1,0 +1,26 @@
+{
+  "name": "mochiws",
+  "version": "0.1.0",
+  "type": "native-engine-plugin",
+  "description": "WebSocket client + WinHTTP GET (connect/poll/send/close/httpGet)",
+  "status": "operational",
+  "entry_point": "mbjs_init_module",
+  "runtime_exports": [
+    "close",
+    "connect",
+    "httpGet",
+    "poll",
+    "send"
+  ],
+  "sources": [
+    "native/mochiws.c"
+  ],
+  "headers": [
+    "include/mochiws_abi.h"
+  ],
+  "binaries": {
+    "x86_64-windows": "lib/mochiws_x86_64.dll"
+  },
+  "js_binding": "node_modules/mochiws",
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
+}
