@@ -56,7 +56,7 @@ NODE_MODULES = [
     ("mochijsnative_stub", "fallback for mochijsnative when native unavailable", "operational"),
     ("dynalib",          "JS API for libdynalib (dynalib(file, offset, symbol, abi, opts))", "operational"),
     ("events",           "stand-in node:events for the express/net stack", "operational"),
-    ("express",          "Express-compatible router (partial: middleware/body/static still open)", "operational"),
+    ("express",          "Express-compatible router: middleware chain, path params, query, json/urlencoded/text body, static + traversal guard, res helpers, template engines (mini-EJS), vhost, app.param, error middleware", "verified"),
     ("fs",               "node:fs entry re-exported from mochifs", "operational"),
     ("net",              "node:net entry over mochinode_net.dll", "operational"),
     ("sqlite",           "node:sqlite-style shim over mochinode_sqlite.dll (bind parameters not wired)", "operational"),

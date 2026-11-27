@@ -79,9 +79,9 @@
       "id": "express-complete",
       "module": "express",
       "layer": "node_modules",
-      "status": "partial",
+      "status": "done",
       "priority": "medium",
-      "note": "MEASURED 2026-11-27: middleware chain (app.use), path params (/items/:id), query, express.json/urlencoded/text body parsers, express.static (with mount-path strip + traversal guard), res.set/type/attachment/redirect all verified 7/7. STILL OPEN: template engines, virtual hosts, app.param, error middleware."
+      "note": "MEASURED 2026-11-27: app.engine/app.set('view engine')/res.render with built-in mini-EJS (interpolation + control-flow + escaping), express.vhost subdomain mounting, app.param route param middleware, error middleware (arity 4, registered after route). selftest/mochi-express2.js EXPRESS_V2_ALL_OK (9 checks)."
     },
     {
       "id": "sqlite-bind",
