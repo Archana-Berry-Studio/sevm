@@ -6,8 +6,13 @@ extern "C" {
 
 /* ABI for mochizlib — engine plugin. Entry point: mbjs_init_module().
    Runtime exports (verified via mbjs loadNative): */
+/*   - crc32Hex */
 /*   - deflateHex */
+/*   - deflateRawHex */
+/*   - gunzipHex */
+/*   - gzipHex */
 /*   - inflateHex */
+/*   - inflateRawHex */
 #ifdef __cplusplus
 }
 #endif

@@ -1,9 +1,9 @@
 # mochi_modules/mochizlib
 
-zlib deflate/inflate (zlib format). gzip/raw framing NOT implemented — inflateHex/deflateHex only
+zlib primitives: gzipHex/gunzipHex/inflateRawHex/deflateRawHex/crc32Hex + legacy deflate/inflate (verified vs Python oracle)
 
 - **Orientation**: native-first (engine plugin, loaded by the engine)
-- **Status**: operational — implemented, integration/network dependent
+- **Status**: verified — exercised against mbjs.exe
 - **Entry point**: `mbjs_init_module(ctx, name)`
 
 ## Layout
@@ -21,14 +21,18 @@ mochi_modules/mochizlib/
 ## Runtime exports (JS-visible, measured on mbjs.exe)
 
 ```js
+- `crc32Hex`
 - `deflateHex`
+- `deflateRawHex`
+- `gunzipHex`
+- `gzipHex`
 - `inflateHex`
+- `inflateRawHex`
 ```
 
 ## JS binding
 
-`node_modules/mochizlib/index.js` membuka binari via 
-`mochinode.loadNative('mochizlib.dll')`.
+`node_modules/mochizlib/index.js` loads the binary via `mochinode.loadNative('mochizlib.dll')`.
 
 The flat file `mochi_modules/mochizlib.dll` is kept for loader/legacy 
 compatibility; `lib/mochizlib_x86_64.dll` is the distribution copy with 

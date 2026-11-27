@@ -1,66 +1,66 @@
 # SEVM — SQLite · Express.js · Vue.js · MochiBerry
 
-**SEVM** adalah ekosistem web yang berjalan *di atas* engine **MochiBerry**
-dengan pemisahan arsitektur bersih: engine inti tetap ringan dan tidak
-disentuh, sementara HTTP, SQLite, dan shim `node:*` hidup sebagai ekstensi
-native `.dll` / `.so` / `.lbrct` yang dimuat saat runtime (pola
-dlopen-style), tanpa compile ulang engine.
+**SEVM** is a web ecosystem that runs *on top of* the **MochiBerry** engine
+with a clean architecture split: the core engine stays lightweight and
+untouched, while HTTP, SQLite and the `node:*` shims live as native `.dll` /
+`.so` / `.lbrct` extensions loaded at runtime (dlopen-style), with no engine
+recompile.
 
-## Dua dunia modul
+## The two module worlds
 
-SEVM memisahkan **dua orientasi** modul — bedanya bukan "boleh/tidak", tapi
-orientasi dominan:
+SEVM separates **two orientations** of modules — the difference is not
+"allowed/not allowed", it is the *dominant orientation*:
 
 | | `node_modules/` | `mochi_modules/` |
 |---|---|---|
-| orientasi | **JS / script / framework** | **native plugin engine** |
-| isi utama | paket JavaScript (`package.json` + `index.js` + `lib/`) | shared object / DLL yang di-load ke engine |
-| native lib | **boleh** — paket bisa membawa `.dll` / `.exe` / `.elf` di `bin/` | justru ini inti: `.dll` / `.so` / `.lbrct` |
-| contoh | `express`, `net`, `sqlite`, `events`, `fs`, `mochinode` | `mochinode_net.dll`, `mochinode_sqlite.dll` |
+| orientation | **JS / script / framework** | **native engine plugin** |
+| main content | JavaScript packages (`package.json` + `index.js` + `lib/`) | shared objects / DLLs loaded into the engine |
+| native lib | **allowed** — a package may carry `.dll` / `.exe` / `.elf` in `bin/` | this IS the core: `.dll` / `.so` / `.lbrct` |
+| examples | `express`, `net`, `sqlite`, `events`, `fs`, `mochinode` | `mochinode_net.dll`, `mochinode_sqlite.dll` |
 
-Jadi `node_modules` = paket framework NodeJS-style (scripting/JS dominan, tapi
-tetap boleh berisi lib native), sedangkan `mochi_modules` = plugin native
-untuk engine (condong ke DLL/so).
+So `node_modules` = NodeJS-style framework packages (scripting/JS dominant, but
+may still carry native libs), while `mochi_modules` = native engine plugins
+(DLL/so oriented).
 
-## Struktur proyek (NodeJS style)
+## Project structure (NodeJS style)
 
 ```
 sevm/
-├── package.json                 # manifest root (type: module, dependencies)
+├── package.json                 # root manifest (type: module, dependencies)
 ├── README.md
 ├── LICENSE
-├── node_modules/                # paket JS/framework (NodeJS style)
-│   ├── mochinode/               # loader inti: require(), loadNative(), resolver
+├── node_modules/                # JS/framework packages (NodeJS style)
+│   ├── mochinode/               # core loader: require(), loadNative(), resolver
 │   │   ├── index.js
 │   │   └── package.json
-│   ├── express/                 # router kompatibilitas Express
+│   ├── express/                 # Express-compatible router
 │   │   ├── index.js
 │   │   ├── package.json
 │   │   └── README.md
-│   ├── dynalib/                 # API dynalib(file, offset, symbol, abi, opts)
+│   ├── dynalib/                 # dynalib(file, offset, symbol, abi, opts) API
 │   │   ├── index.js
 │   │   ├── package.json
 │   │   └── README.md
-│   ├── net/                     # node:http di atas mochinode_net
+│   ├── net/                     # node:http on top of mochinode_net
 │   │   ├── index.js
 │   │   ├── lib/http.js          # parsing + response writer
 │   │   └── package.json
-│   ├── sqlite/                  # node:sqlite di atas mochinode_sqlite
+│   ├── sqlite/                  # node:sqlite on top of mochinode_sqlite
 │   ├── events/                  # node:events (EventEmitter)
-│   └── fs/                      # node:fs di atas mbjs:std / mbjs:os
-├── mochi_modules/               # plugin native engine
-│   ├── mochinode_net.dll
-│   ├── mochinode_sqlite.dll
-│   ├── mochinode_dynalib.dll    # bridge libdynalib -> JS
+│   └── fs/                      # node:fs on top of mbjs:std / mbjs:os
+├── mochi_modules/               # native engine plugins
+│   ├── mochinode_net/           # per-module dir: native/, include/, lib/, script/
+│   ├── mochinode_sqlite/
+│   ├── mochinode_dynalib/       # libdynalib -> JS bridge
 │   └── README.md
-├── native/                      # sumber C di balik plugin mochi_modules
-│   ├── mbjs_runtime.h           # bootstrap resolve simbol engine
+├── native/                      # C sources behind mochi_modules plugins
+│   ├── mbjs_runtime.h           # engine symbol resolve bootstrap
 │   ├── mochinode_net.c
 │   ├── mochinode_sqlite.c
-│   └── mochinode_poke.c         # modul uji kelayakan
-├── libdynalib/                  # subsistem C99 dynamic loader (107/107 test)
+│   └── mochinode_poke.c         # probe module
+├── libdynalib/                  # C99 dynamic loader subsystem (107/107 test)
 └── examples/
-    └── sevm-app/                # aplikasi contoh (NodeJS style)
+    └── sevm-app/                # sample app (NodeJS style)
         ├── package.json
         ├── src/server.js
         └── public/
@@ -68,66 +68,70 @@ sevm/
             └── vue.global.prod.js
 ```
 
-## Menjalankan demo
+## Running the demo
 
 ```bash
 cd examples/sevm-app
 mbjs.exe -m src/server.js
 
-# lalu:
+# then:
 curl http://127.0.0.1:8080/api/health
 curl http://127.0.0.1:8080/api/items
 curl -X POST http://127.0.0.1:8080/api/items \
      -H "content-type: application/json" \
-     -d '{"title":"Kirim laporan ke Bos"}'
+     -d '{"title":"Send report to the boss"}'
 ```
 
-Endpoint:
+Endpoints:
 
-- `GET /` — Vue 3 SPA (build statis, client-side)
-- `GET /api/items?q=` — JSON dari SQLite
-- `POST /api/items` — INSERT ke SQLite
-- `GET /api/health` — status engine/runtime
+- `GET /` — Vue 3 SPA (static build, client-side)
+- `GET /api/items?q=` — JSON from SQLite
+- `POST /api/items` — INSERT into SQLite
+- `GET /api/health` — engine/runtime status
 
-## Kontrak modul native engine (diverifikasi disassembly + source)
+## Native engine module contract (verified by disassembly + source)
 
-- Loader: `LoadLibraryA(path)` lalu `GetProcAddress(h, "mbjs_init_module")`,
+- Loader: `LoadLibraryA(path)` then `GetProcAddress(h, "mbjs_init_module")`,
   `m = init(ctx, module_name)`.
-- Simbol ekspor **wajib** bernama `mbjs_init_module`.
-- Specifier import **wajib** berakhiran `.dll`; path relatif di-resolve
-  relatif ke direktori file pengimpor (`../` juga didukung).
-- `AddModuleExportList` (nama) dipanggil di dalam `mbjs_init_module`;
-  `SetModuleExportList` (nilai) dipanggil di init func modul.
-- Modul native **tidak boleh** meng-import `mbjs.exe` (Windows error 126) —
-  simbol engine di-resolve saat runtime dari host image (`GetModuleHandle(NULL)`),
-  lihat `native/mbjs_runtime.h`.
-- Engine harus mengekspor simbol `MBJS_*`; build `tier-core` yang sudah
-  di-strip tidak punya export table sehingga plugin native tidak bisa resolve.
+- The exported symbol **must** be named `mbjs_init_module`.
+- The import specifier **must** end in `.dll`; relative paths resolve relative
+  to the importing file's directory (`../` is also supported).
+- `AddModuleExportList` (names) is called inside `mbjs_init_module`;
+  `SetModuleExportList` (values) is called in the module init func.
+- A native module **must not** import `mbjs.exe` (Windows error 126) — engine
+  symbols are resolved at runtime from the host image (`GetModuleHandle(NULL)`),
+  see `native/mbjs_runtime.h`.
+- The engine must export the `MBJS_*` symbols; the stripped `tier-core` build
+  has no export table, so native plugins cannot resolve.
 
-## Komponen
+## Components
 
-| Komponen | Status | Catatan |
-|----------|--------|---------|
-| `takegawa` (TGPM) | ✅ | subrepo/tool terpisah (`Archana-Berry-Studio/takegawa`) |
-| `libdynalib` | ✅ 107/107 test | loader dinamis C99 lintas `.so`/`.dll`/`.lbrct`; juga di repo `Archana-Berry-Studio/libmochiberry` |
-| `mochi_modules/mochinode_net.dll` | ✅ | server TCP/HTTP blocking (Winsock2) |
-| `mochi_modules/mochinode_sqlite.dll` | ✅ | bridge SQLite (sqlite3 3.50.4, prepared stmt) |
-| `mochi_modules/mochinode_dynalib.dll` | ✅ | bridge `dynalib()` ke JS (embed libdynalib, JIT trampoline) |
-| `node_modules/*` | ✅ | shim `node:http`, `node:sqlite`, `node:events`, `node:fs`, Express, dynalib |
+| Component | Status | Notes |
+|----------|--------|-------|
+| `takegawa` (TGPM) | ✅ | separate repo/tool (`Archana-Berry-Studio/takegawa`) |
+| `libdynalib` | ✅ 107/107 test | C99 dynamic loader across `.so`/`.dll`/`.lbrct`; also in repo `Archana-Berry-Studio/libmochiberry` |
+| `mochi_modules/mochinode_net` | ✅ | blocking TCP/HTTP server (Winsock2) |
+| `mochi_modules/mochinode_sqlite` | ✅ | SQLite bridge (sqlite3 3.50.4, prepared stmt) |
+| `mochi_modules/mochinode_dynalib` | ✅ | `dynalib()` -> JS bridge (embedded libdynalib, JIT trampoline) |
+| `node_modules/*` | ✅ | shims `node:http`, `node:sqlite`, `node:events`, `node:fs`, Express, dynalib |
 | Vue SPA | ✅ | `public/index.html` + `vue.global.prod.js` (offline) |
-| demo HTTP | ✅ | `examples/sevm-app/src/server.js` → port 8080 |
+| demo HTTP | ✅ | `examples/sevm-app/src/server.js` -> port 8080 |
 
 ## Agent & shim workflow
 
-- `AGENTS.md` berisi kontrak arsitektur untuk agent: batas `mochi_modules/` vs `node_modules/`, layout modul baru, aturan ABI/dynalib, dan alur gap-driven.
-- `MISSING_SHIMS.json` mencatat shim yang sudah ada dan yang masih kurang.
-- `python script/scaffold_shim.py <nama> mochi` membuat kerangka modul native-first; mode `node` membuat paket JS-first hybrid.
-- Toolchain cross-compile ada di `cmake/` (MinGW, Linux, Android NDK).
+- `AGENTS.md` holds the architecture contract for agents: the `mochi_modules/`
+  vs `node_modules/` boundary, new-module layout, ABI/dynalib rules, and the
+  gap-driven flow.
+- `MISSING_SHIMS.json` records existing and still-missing shims.
+- `python script/scaffold_shim.py <name> mochi` scaffolds a native-first module;
+  mode `node` scaffolds a JS-first hybrid package.
+- Cross-compile toolchains live in `cmake/` (MinGW, Linux, Android NDK).
 
-Shim baru: `mochitimers`, `mochiglobals`, `mochifetch`, dan `mochihttps` (delegasi ke WinHTTP lewat `mochihttp`).
+New shims: `mochitimers`, `mochiglobals`, `mochifetch`, and `mochihttps`
+(delegates to WinHTTP via `mochihttp`).
 
-## Catatan ukuran
+## Size notes
 
-Engine inti (build `tier-core`, sudah di-strip) ± **1.21 MB** — masih di atas
-target < 1 MB. Ekstensi SEVM (net + sqlite DLL) masing-masing ± **60 KB** dan
-tidak menambah ukuran engine karena dimuat saat runtime.
+Core engine (`tier-core` build, stripped) is about **1.21 MB** — still above the
+< 1 MB target. SEVM extensions (net + sqlite DLLs) are about **60 KB** each and
+do not add to the engine size because they are loaded at runtime.

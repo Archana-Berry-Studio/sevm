@@ -41,8 +41,7 @@ mochi_modules/mochicrypto/
 
 ## JS binding
 
-`node_modules/mochicrypto/index.js` membuka binari via 
-`mochinode.loadNative('mochicrypto.dll')`.
+`node_modules/mochicrypto/index.js` loads the binary via `mochinode.loadNative('mochicrypto.dll')`.
 
 The flat file `mochi_modules/mochicrypto.dll` is kept for loader/legacy 
 compatibility; `lib/mochicrypto_x86_64.dll` is the distribution copy with 

@@ -1,105 +1,119 @@
 # MochiBerry Agent Engineering Rules
 
-Agent wajib membaca file ini sebelum menambah atau mengubah shim di repo SEVM.
+An agent MUST read this file before adding or modifying any shim in the SEVM repo.
 
-## 1. Invarian arsitektur
+## 1. Architecture invariants
 
-- Dilarang menambah fitur Node.js ke `libmochiberry`/engine inti.
-- Semua shim masuk ke `node_modules/` atau `mochi_modules/`.
-- `mochi_modules/` = native-first. JS di sana hanya binding tipis.
-- `node_modules/` = JS-first hybrid. Boleh memanggil native lewat `dynalib()`/`loadNative()`.
-- DLL flat yang sudah ada di `mochi_modules/*.dll` adalah legacy kompatibilitas. Jangan memindahkan atau menghapusnya tanpa update `mochinode.resolveNativePath()`.
-- Modul baru wajib memakai layout berstruktur di bawah. Modul lama boleh tetap flat sampai dimigrasikan.
-- Nama biner: `<modul>_x86_64.dll`, `<modul>_arm64.dylib`, `<modul>_aarch64.so`, `<modul>_x86_64.so`.
+- Adding Node.js features to `libmochiberry`/the core engine is forbidden.
+- All shims go into `node_modules/` or `mochi_modules/`.
+- `mochi_modules/` = native-first. JS there is only a thin binding.
+- `node_modules/` = JS-first hybrid. It may call native through `dynalib()`/`loadNative()`.
+- Flat DLLs already present in `mochi_modules/*.dll` are a legacy-compat artifact. Do
+  not move or delete them without updating `mochinode.resolveNativePath()`.
+- A new module must use the structured layout below. Old modules may stay flat
+  until migrated.
+- Binary naming: `<module>_x86_64.dll`, `<module>_arm64.dylib`, `<module>_aarch64.so`,
+  `<module>_x86_64.so`.
 
-## 2. Layout wajib modul baru
+## 2. Mandatory layout for a new module
 
-### `mochi_modules/<nama>/` (native-first)
+### `mochi_modules/<name>/` (native-first)
 
 ```text
-mochi_modules/<nama>/
+mochi_modules/<name>/
 ├── README.md
 ├── CMakeLists.txt
 ├── include/
-│   └── <nama>_abi.h
+│   └── <name>_abi.h
 ├── native/
-│   └── <nama>.c
+│   └── <name>.c
 ├── script/
 │   ├── index.js
 │   └── test.js
 └── lib/
-    ├── <nama>_x86_64.dll
-    ├── <nama>_x86_64.so
-    ├── <nama>_aarch64.so
-    └── <nama>_arm64.dylib
+    ├── <name>_x86_64.dll
+    ├── <name>_x86_64.so
+    ├── <name>_aarch64.so
+    └── <name>_arm64.dylib
 ```
 
-### `node_modules/<nama>/` (JS-first hybrid)
+### `node_modules/<name>/` (JS-first hybrid)
 
 ```text
-node_modules/<nama>/
+node_modules/<name>/
 ├── package.json
 ├── README.md
 ├── CMakeLists.txt
 ├── include/
-│   └── <nama>_abi.h
+│   └── <name>_abi.h
 ├── src/
-│   ├── <nama>.c
+│   ├── <name>.c
 │   └── helper.js
 ├── script/
 │   ├── index.js
 │   └── test.js
 └── lib/
-    ├── <nama>_x86_64.dll
-    ├── <nama>_x86_64.so
-    ├── <nama>_aarch64.so
-    └── <nama>_arm64.dylib
+    ├── <name>_x86_64.dll
+    ├── <name>_x86_64.so
+    ├── <name>_aarch64.so
+    └── <name>_arm64.dylib
 ```
 
-`package.json` hybrid wajib memakai `"main": "script/index.js"`. `node_modules` murni JS boleh tanpa `CMakeLists.txt`, `include/`, `src/`, dan `lib/`.
+A hybrid `package.json` must use `"main": "script/index.js"`. A pure-JS
+`node_modules` package may omit `CMakeLists.txt`, `include/`, `src/` and `lib/`.
 
-## 3. Aturan implementasi
+## 3. Implementation rules
 
-- C99/NDK/SDK native ditempatkan di `native/` (mochi) atau `src/` (hybrid). Hindari C++ bila tidak perlu.
-- Header publik di `include/` memakai guard `#ifndef` dan `extern "C"` bila bisa dipakai C++.
-- Ekspor native stabil: `mbjs_init_module` untuk engine plugin; `*_abi_*` untuk dynalib.
-- Binding JS memakai path relatif: `mochinode.resolveNativePath('nama.dll', cwd())` atau `../lib/<nama>_<arch>.<ext>`.
-- Jangan membuat wrapper objek besar di atas simbol dynalib. Bind langsung ke fungsi/ekspor.
-- Setiap `malloc`/`calloc` harus punya `free` atau terikat ke GC/arena yang jelas.
-- Jangan mengimpor `mbjs.exe` dari DLL plugin. Simbol engine di-resolve lewat `native/mbjs_runtime.h`.
-- Patch di `node_modules` harus punya sumber tetap di repo ini agar tidak hilang saat `npm install`.
+- C99/NDK/SDK native code goes in `native/` (mochi) or `src/` (hybrid). Avoid C++
+  unless needed.
+- Public headers in `include/` use `#ifndef` guards and `extern "C"` when usable
+  from C++.
+- Stable native exports: `mbjs_init_module` for engine plugins; `*_abi_*` for dynalib.
+- JS bindings use relative paths: `mochinode.resolveNativePath('name.dll', cwd())`
+  or `../lib/<name>_<arch>.<ext>`.
+- Do not build large wrapper objects over dynalib symbols. Bind directly to
+  functions/exports.
+- Every `malloc`/`calloc` must have a `free` or be bound to a clear GC/arena.
+- Do not import `mbjs.exe` from a plugin DLL. Engine symbols are resolved via
+  `native/mbjs_runtime.h`.
+- Patches in `node_modules` must have a permanent source in this repo so they do
+  not vanish on `npm install`.
 
-## 4. Alur gap-driven
+## 4. Gap-driven flow
 
-- Baca `MISSING_SHIMS.json`.
-- Pilih satu modul dengan prioritas tertinggi.
-- Jalankan `python script/scaffold_shim.py <nama> mochi` atau `... node`.
-- Implementasi native dahulu untuk `mochi_modules`; JS dahulu untuk `node_modules`.
-- Tambah `script/test.js`, lalu jalankan via `E:/bcf/mochiberry/build_manual/mbjs.exe -m script/test.js`.
-- Jika lulus, tandai entri `MISSING_SHIMS.json` sebagai `done` dan lanjut ke entri berikutnya.
+- Read `MISSING_SHIMS.json`.
+- Pick the highest-priority module.
+- Run `python script/scaffold_shim.py <name> mochi` or `... node`.
+- Implement native first for `mochi_modules`; JS first for `node_modules`.
+- Add `script/test.js`, then run via
+  `E:/bcf/mochiberry/build_manual/mbjs.exe -m script/test.js`.
+- If it passes, mark the `MISSING_SHIMS.json` entry `done` and move to the next.
 
 ## 5. Cross-compile
 
-Toolchain tersedia di `cmake/`:
+Toolchains are available in `cmake/`:
 
 ```bash
-cmake -S mochi_modules/<nama> -B build/<nama>-win64 -DCMAKE_TOOLCHAIN_FILE=cmake/x86_64-windows-mingw.cmake -DMOCHI_ARCH=x86_64
-cmake -S mochi_modules/<nama> -B build/<nama>-linux -DCMAKE_TOOLCHAIN_FILE=cmake/x86_64-linux.cmake -DMOCHI_ARCH=x86_64
-cmake -S mochi_modules/<nama> -B build/<nama>-android -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-android-ndk.cmake -DMOCHI_ARCH=aarch64
-cmake --build build/<nama>-win64
+cmake -S mochi_modules/<name> -B build/<name>-win64 -DCMAKE_TOOLCHAIN_FILE=cmake/x86_64-windows-mingw.cmake -DMOCHI_ARCH=x86_64
+cmake -S mochi_modules/<name> -B build/<name>-linux -DCMAKE_TOOLCHAIN_FILE=cmake/x86_64-linux.cmake -DMOCHI_ARCH=x86_64
+cmake -S mochi_modules/<name> -B build/<name>-android -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-android-ndk.cmake -DMOCHI_ARCH=aarch64
+cmake --build build/<name>-win64
 ```
 
-## 6. Perintah verify
+## 6. Verify commands
 
 ```bash
-node --check node_modules/<nama>/script/index.js
+node --check node_modules/<name>/script/index.js
 E:/bcf/mochiberry/build_manual/mbjs.exe -m selftest/mochi-core.js
 E:/bcf/mochiberry/build_manual/mbjs.exe -m selftest/mochi-runtime.js
 E:/bcf/mochiberry/build_manual/mbjs.exe -m selftest/mochi-shims.js
 ```
 
-## 7. Kapan memakai mana
+## 7. When to use which
 
-- `mochi_modules`: shim inti sistem (`fs`, `crypto`, `net`, `zlib`, `ws`), driver NDK, protokol berat, atau modul yang perlu RAM minimum.
-- `node_modules` hybrid: paket aplikasi/framework yang nyaman di JS/TS tapi punya bagian berat C99.
-- `node_modules` murni JS: utilitas ringan yang tidak menyentuh OS dan bukan bottleneck.
+- `mochi_modules`: core system shims (`fs`, `crypto`, `net`, `zlib`, `ws`), NDK
+  drivers, heavy protocols, or modules that need minimum RAM.
+- `node_modules` hybrid: app/framework packages comfortable in JS/TS but with a
+  heavy C99 part.
+- `node_modules` pure JS: lightweight utilities that touch no OS and are not a
+  bottleneck.

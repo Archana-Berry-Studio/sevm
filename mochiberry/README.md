@@ -1,15 +1,15 @@
-# mochiberry — aset & dokumentasi engine
+# mochiberry — engine assets & documentation
 
-Folder ini **bukan kode**. Isinya catatan aset dan kontrak yang berkaitan
-dengan **engine MochiBerry** di luar repo SEVM ini. Repo engine inti ada di
-`E:/bcf/mochiberry` — di sini kita dokumentasikan *bagian mana* yang dibutuhkan
-oleh shim layer dan *kontrak* yang dipegang plugin native.
+This folder is **not code**. It holds notes and contracts about the
+**MochiBerry engine** that lives outside this SEVM repo. The core engine repo
+is at `E:/bcf/mochiberry` — here we document *which parts* the shim layer needs
+and the *contract* that native plugins must honour.
 
-- [`engine-assets.md`](engine-assets.md) — build engine yang dipakai, tabel
-  ekspor, artefak di disk, dan kenapa `build_manual` bukan `tier-core`.
-- [`module-loader-contract.md`](module-loader-contract.md) — aturan pemuatan
-  plugin native (`mbjs_init_module`, specifier, larangan import `mbjs.exe`).
-- [`runtime-symbols.md`](runtime-symbols.md) — simbol `MBJS_*` yang di-resolve
-  plugin lewat `native/mbjs_runtime.h`.
+- [`engine-assets.md`](engine-assets.md) — the engine build in use, the export
+  table, on-disk artifacts, and why `build_manual` is used instead of `tier-core`.
+- [`module-loader-contract.md`](module-loader-contract.md) — native plugin
+  loading rules (`mbjs_init_module`, specifier, the `mbjs.exe` import ban).
+- [`runtime-symbols.md`](runtime-symbols.md) — the `MBJS_*` symbols plugins
+  resolve through `native/mbjs_runtime.h`.
 
-Dokumentasi arsitektur shim ada di [`../docs`](../docs).
+Shim-layer architecture documentation lives in [`../docs`](../docs).

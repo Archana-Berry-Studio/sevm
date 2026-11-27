@@ -40,8 +40,7 @@ mochi_modules/mochinode_sqlite/
 
 ## JS binding
 
-`node_modules/mochinode_sqlite/index.js` membuka binari via 
-`mochinode.loadNative('mochinode_sqlite.dll')`.
+`node_modules/mochinode_sqlite/index.js` loads the binary via `mochinode.loadNative('mochinode_sqlite.dll')`.
 
 The flat file `mochi_modules/mochinode_sqlite.dll` is kept for loader/legacy 
 compatibility; `lib/mochinode_sqlite_x86_64.dll` is the distribution copy with 

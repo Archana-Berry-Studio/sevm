@@ -38,8 +38,7 @@ mochi_modules/mochinode_dynalib/
 
 ## JS binding
 
-`node_modules/mochinode_dynalib/index.js` membuka binari via 
-`mochinode.loadNative('mochinode_dynalib.dll')`.
+`node_modules/mochinode_dynalib/index.js` loads the binary via `mochinode.loadNative('mochinode_dynalib.dll')`.
 
 The flat file `mochi_modules/mochinode_dynalib.dll` is kept for loader/legacy 
 compatibility; `lib/mochinode_dynalib_x86_64.dll` is the distribution copy with 

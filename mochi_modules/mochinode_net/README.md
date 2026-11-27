@@ -30,8 +30,7 @@ mochi_modules/mochinode_net/
 
 ## JS binding
 
-`node_modules/mochinode_net/index.js` membuka binari via 
-`mochinode.loadNative('mochinode_net.dll')`.
+`node_modules/mochinode_net/index.js` loads the binary via `mochinode.loadNative('mochinode_net.dll')`.
 
 The flat file `mochi_modules/mochinode_net.dll` is kept for loader/legacy 
 compatibility; `lib/mochinode_net_x86_64.dll` is the distribution copy with 

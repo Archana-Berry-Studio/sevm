@@ -1,8 +1,7 @@
 # sevm-app
 
-Demo aplikasi SEVM: **Vue 3 SPA** di depan, **Express-shaped router** di
-tengah, **SQLite** di belakang — semuanya berjalan di atas engine
-MochiBerry.
+SEVM demo application: **Vue 3 SPA** in front, **Express-shaped router** in the
+middle, **SQLite** in the back — all running on top of the MochiBerry engine.
 
 ## Run
 
@@ -11,33 +10,33 @@ cd examples/sevm-app
 mbjs.exe -m src/server.js
 ```
 
-Server mendengarkan pada `http://127.0.0.1:8080` (bind `0.0.0.0`, jadi juga bisa
-dibuka dari perangkat lain pada LAN yang sama).
+The server listens on `http://127.0.0.1:8080` (bound to `0.0.0.0`, so it can
+also be reached from other devices on the same LAN).
 
 ## Layout
 
 ```
 sevm-app/
 ├── package.json
-├── src/server.js          # entry point aplikasi
+├── src/server.js          # application entry point
 └── public/
-    ├── index.html         # Vue 3 SPA (build statis, tanpa compiler runtime)
+    ├── index.html         # Vue 3 SPA (static build, no runtime compiler)
     └── vue.global.prod.js # Vue 3.5.46 vendored (offline)
 ```
 
-## Endpoint
+## Endpoints
 
-| method | path | fungsi |
-|--------|------|--------|
-| GET | `/` | SPA Vue 3 |
-| GET | `/vue.global.prod.js` | bundle Vue (offline) |
+| method | path | purpose |
+|--------|------|---------|
+| GET | `/` | Vue 3 SPA |
+| GET | `/vue.global.prod.js` | Vue bundle (offline) |
 | GET | `/api/health` | `{ ok, engine, sqlite, requested }` |
-| GET | `/api/dynalib?file=` | export table sebuah DLL lewat `dynalib()` |
-| GET | `/api/items?q=` | `{ count, items[] }` dari SQLite |
-| POST | `/api/items` | insert item baru, balas `201` |
+| GET | `/api/dynalib?file=` | export table of a DLL via `dynalib()` |
+| GET | `/api/items?q=` | `{ count, items[] }` from SQLite |
+| POST | `/api/items` | insert a new item, responds `201` |
 
-## Catatan
+## Notes
 
-- Database: `app.db` di folder aplikasi (dibuat otomatis).
-- Handler memakai API `require()` dari paket `mochinode`, jadi penulisan
-  aplikasi terlihat seperti kode NodeJS biasa.
+- Database: `app.db` in the application folder (created automatically).
+- Handlers use the `require()` API from the `mochinode` package, so writing
+  the application looks like ordinary Node.js code.

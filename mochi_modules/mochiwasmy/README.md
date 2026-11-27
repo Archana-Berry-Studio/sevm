@@ -26,8 +26,7 @@ mochi_modules/mochiwasmy/
 
 ## JS binding
 
-`node_modules/mochiwasmy/index.js` membuka binari via 
-`mochinode.loadNative('mochiwasmy.dll')`.
+`node_modules/mochiwasmy/index.js` loads the binary via `mochinode.loadNative('mochiwasmy.dll')`.
 
 The flat file `mochi_modules/mochiwasmy.dll` is kept for loader/legacy 
 compatibility; `lib/mochiwasmy_x86_64.dll` is the distribution copy with 

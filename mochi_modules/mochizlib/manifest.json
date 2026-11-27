@@ -2,12 +2,17 @@
   "name": "mochizlib",
   "version": "0.1.0",
   "type": "native-engine-plugin",
-  "description": "zlib deflate/inflate (zlib format). gzip/raw framing NOT implemented — inflateHex/deflateHex only",
-  "status": "operational",
+  "description": "zlib primitives: gzipHex/gunzipHex/inflateRawHex/deflateRawHex/crc32Hex + legacy deflate/inflate (verified vs Python oracle)",
+  "status": "verified",
   "entry_point": "mbjs_init_module",
   "runtime_exports": [
+    "crc32Hex",
     "deflateHex",
-    "inflateHex"
+    "deflateRawHex",
+    "gunzipHex",
+    "gzipHex",
+    "inflateHex",
+    "inflateRawHex"
   ],
   "sources": [
     "native/mochizlib.c"

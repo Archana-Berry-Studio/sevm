@@ -6,7 +6,8 @@
   "abi": {
     "entry_point": "mbjs_init_module",
     "engine_symbol_resolution": "native/mbjs_runtime.h (host image symbols)",
-    "forbidden": "plugin must not import mbjs.exe directly (Windows error 126)"
+    "forbidden": "plugin must not import mbjs.exe directly (Windows error 126)",
+    "throw_contract": "C functions that throw MUST return MBJS_EXCEPTION (not MBJS_UNDEFINED)"
   },
   "platform_bins": {
     "windows": "_x86_64.dll",
@@ -60,12 +61,17 @@
     },
     {
       "name": "mochizlib",
-      "description": "zlib deflate/inflate (zlib format). gzip/raw framing NOT implemented — inflateHex/deflateHex only",
+      "description": "zlib primitives: gzipHex/gunzipHex/inflateRawHex/deflateRawHex/crc32Hex + legacy deflate/inflate (verified vs Python oracle)",
       "exports": [
+        "crc32Hex",
         "deflateHex",
-        "inflateHex"
+        "deflateRawHex",
+        "gunzipHex",
+        "gzipHex",
+        "inflateHex",
+        "inflateRawHex"
       ],
-      "status": "operational",
+      "status": "verified",
       "path": "mochi_modules/mochizlib"
     },
     {
@@ -149,21 +155,68 @@
     },
     {
       "name": "mochijsnative",
-      "description": "AOT/JIT native probe helper — FAILS mbjs_call_module init on the current engine build",
-      "exports": [],
-      "status": "broken",
+      "description": "AOT/JIT + WASM native bridge (eval, jit*, runtime*, value*, context*, hostBase/hostExport/lastError)",
+      "exports": [
+        "abi",
+        "await",
+        "bind",
+        "call",
+        "callValue",
+        "contextFree",
+        "contextNew",
+        "contextStd",
+        "detectModule",
+        "dumpError",
+        "engineVersion",
+        "eval",
+        "evalModule",
+        "exportNames",
+        "exportSignature",
+        "getException",
+        "getGlobal",
+        "getProp",
+        "hostBase",
+        "hostExport",
+        "jitCall",
+        "jitCleanup",
+        "jitCompile",
+        "jitFree",
+        "jitInfo",
+        "jitInvoke",
+        "jitNew",
+        "jitStats",
+        "jsonParse",
+        "lastError",
+        "loop",
+        "runtimeFree",
+        "runtimeLimits",
+        "runtimeNew",
+        "setProp",
+        "unbind",
+        "valueFree",
+        "valueIsException",
+        "valueJson",
+        "valueNew",
+        "valueToInt",
+        "valueToNumber",
+        "valueToString",
+        "valueType",
+        "version"
+      ],
+      "status": "verified",
       "path": "mochi_modules/mochijsnative"
     },
     {
       "name": "mochisandbox",
-      "description": "Realm-isolated JS: fresh runtime+context per sandbox, memory limit, instruction budget, strict mode, per-realm microtask queue",
+      "description": "Realm-isolated sandbox runtime (create/run/runAsync/clone/free/count/setGlobal) with per-realm intrinsic isolation",
       "exports": [
+        "clone",
+        "count",
         "create",
-        "setGlobal",
+        "free",
         "run",
         "runAsync",
-        "free",
-        "count"
+        "setGlobal"
       ],
       "status": "verified",
       "path": "mochi_modules/mochisandbox"

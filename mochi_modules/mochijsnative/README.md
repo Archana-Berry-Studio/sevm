@@ -1,9 +1,9 @@
 # mochi_modules/mochijsnative
 
-AOT/JIT native probe helper — FAILS mbjs_call_module init on the current engine build
+AOT/JIT + WASM native bridge (eval, jit*, runtime*, value*, context*, hostBase/hostExport/lastError)
 
 - **Orientation**: native-first (engine plugin, loaded by the engine)
-- **Status**: broken — fails to load/init on the current engine build
+- **Status**: verified — exercised against mbjs.exe
 - **Entry point**: `mbjs_init_module(ctx, name)`
 
 ## Layout
@@ -20,12 +20,57 @@ mochi_modules/mochijsnative/
 
 ## Runtime exports (JS-visible, measured on mbjs.exe)
 
-_none — module fails to initialize on the current engine build._
+```js
+- `abi`
+- `await`
+- `bind`
+- `call`
+- `callValue`
+- `contextFree`
+- `contextNew`
+- `contextStd`
+- `detectModule`
+- `dumpError`
+- `engineVersion`
+- `eval`
+- `evalModule`
+- `exportNames`
+- `exportSignature`
+- `getException`
+- `getGlobal`
+- `getProp`
+- `hostBase`
+- `hostExport`
+- `jitCall`
+- `jitCleanup`
+- `jitCompile`
+- `jitFree`
+- `jitInfo`
+- `jitInvoke`
+- `jitNew`
+- `jitStats`
+- `jsonParse`
+- `lastError`
+- `loop`
+- `runtimeFree`
+- `runtimeLimits`
+- `runtimeNew`
+- `setProp`
+- `unbind`
+- `valueFree`
+- `valueIsException`
+- `valueJson`
+- `valueNew`
+- `valueToInt`
+- `valueToNumber`
+- `valueToString`
+- `valueType`
+- `version`
+```
 
 ## JS binding
 
-`node_modules/mochijsnative/index.js` membuka binari via 
-`mochinode.loadNative('mochijsnative.dll')`.
+`node_modules/mochijsnative/index.js` loads the binary via `mochinode.loadNative('mochijsnative.dll')`.
 
 The flat file `mochi_modules/mochijsnative.dll` is kept for loader/legacy 
 compatibility; `lib/mochijsnative_x86_64.dll` is the distribution copy with 

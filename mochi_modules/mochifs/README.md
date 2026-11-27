@@ -36,8 +36,7 @@ mochi_modules/mochifs/
 
 ## JS binding
 
-`node_modules/mochifs/index.js` membuka binari via 
-`mochinode.loadNative('mochifs.dll')`.
+`node_modules/mochifs/index.js` loads the binary via `mochinode.loadNative('mochifs.dll')`.
 
 The flat file `mochi_modules/mochifs.dll` is kept for loader/legacy 
 compatibility; `lib/mochifs_x86_64.dll` is the distribution copy with 

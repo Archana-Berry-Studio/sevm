@@ -31,7 +31,7 @@ NODE_MODULES = [
     ("mochiglobals",     "Installs missing globals: setTimeout/setInterval/clear*, URL, TextEncoder/Decoder, AbortController, structuredClone, fetch, crypto", "verified"),
     ("mochitimers",      "Node timers over mbjs:os, also installed as globals", "verified"),
     ("mochicrypto",      "node:crypto shim: createHash/createHmac/pbkdf2/Cipheriv/randomBytes over mochicrypto.dll", "verified"),
-    ("mochizlib",        "node:zlib shim: gzip/gunzip/deflate/inflate + transforms over mochizlib.dll", "verified"),
+    ("mochizlib",        "node:zlib shim: gzip/gunzip/inflateRaw/deflateRaw/crc32 + transforms over mochizlib.dll (native framing verified vs Python)", "verified"),
     ("mochifs",          "node:fs shim over mochifs.dll with mbjs:std fallback", "verified"),
     ("mochibuffer",      "node:buffer shim (MochiBuffer extends Uint8Array), installs globalThis.Buffer", "verified"),
     ("mochievents",      "node:events shim: EventEmitter", "verified"),
@@ -42,16 +42,17 @@ NODE_MODULES = [
     ("mochios",          "node:os shim: platform/arch/tmpdir/homedir/cpus/freemem", "verified"),
     ("mochiprocess",     "node:process shim: env/argv/arch/hrtime/uptime + globalThis.process", "verified"),
     ("mochimodule",      "node:module shim: createRequire()", "verified"),
+    ("mochisandbox",     "Realm-isolated sandbox: create/run/runAsync/clone/free/count/setGlobal, per-realm intrinsics, memLimit/budgetMs; SECURITY.md", "verified"),
     ("mochiws",          "node:ws / WebSocket shim + httpGet over mochiws.dll (WinHTTP)", "operational"),
-    ("mochihttp",        "node:http shim: ClientRequest/IncomingMessage, get() over mochiws.httpGet", "operational"),
-    ("mochihttps",       "node:https shim — request/get emit MOCHI_UNSUPPORTED (no TLS write path yet)", "stub"),
+    ("mochihttp",        "node:http shim: ClientRequest/IncomingMessage, get() over mochiws.httpGet; POST/PUT/PATCH bodies not yet wired", "operational"),
+    ("mochihttps",       "node:https shim: request()/get() over mochiws.httpGet (GET verified status=200); POST/PUT/PATCH bodies still unsupported", "operational"),
     ("mochiasync_hooks", "node:async_hooks shim: AsyncLocalStorage (single-context, non-async-correct)", "stub"),
     ("mochitls",         "node:tls shim: TLSSocket marker only, connect() unsupported", "stub"),
-    ("mochinet",         "node:net shim: Socket marker + unsupported connect/createServer", "stub"),
+    ("mochinet",         "node:net shim: Socket/createServer markers; connect() emits MOCHI_UNSUPPORTED (client connect needs a mochinode_net export)", "stub"),
     ("mochidiagnostics_channel", "node:diagnostics_channel shim: no-op channel()", "stub"),
     ("mochiperf_hooks",  "node:perf_hooks shim: performance passthrough + no-op PerformanceObserver", "stub"),
     ("mochiworker_threads", "node:worker_threads shim: Worker throws unavailable, isMainThread=true", "stub"),
-    ("mochijsnative",    "AOT/JIT native bridge loader (native probe helper)", "broken"),
+    ("mochijsnative",    "AOT/JIT + WASM native bridge (eval/jit*/runtime*/value*/context*, hostBase/hostExport/lastError) — 51 exports verified", "verified"),
     ("mochijsnative_stub", "fallback for mochijsnative when native unavailable", "operational"),
     ("dynalib",          "JS API for libdynalib (dynalib(file, offset, symbol, abi, opts))", "operational"),
     ("events",           "stand-in node:events for the express/net stack", "operational"),
@@ -69,8 +70,8 @@ MOCHI_MODULES = [
       "sha256Hex","sha384Hex","sha512Hex","timingSafeEqual"], "verified"),
     ("mochifs", "Filesystem primitives (read/write/stat/readdir/copy/rename/remove/mkdir) via host image",
      ["appendText","copyFile","cwd","exists","mkdir","readText","readdir","remove","rename","stat","writeText"], "verified"),
-    ("mochizlib", "zlib deflate/inflate (zlib format). gzip/raw framing NOT implemented — inflateHex/deflateHex only",
-     ["deflateHex","inflateHex"], "operational"),
+    ("mochizlib", "zlib primitives: gzipHex/gunzipHex/inflateRawHex/deflateRawHex/crc32Hex + legacy deflate/inflate (verified vs Python oracle)",
+     ["crc32Hex","deflateHex","deflateRawHex","gunzipHex","gzipHex","inflateHex","inflateRawHex"], "verified"),
     ("mochinode_net", "Blocking TCP/HTTP server primitives over Winsock2 (httpServer/httpAccept/httpRead/httpWrite/httpClose)",
      ["httpAccept","httpClose","httpRead","httpServer","httpWrite"], "operational"),
     ("mochinode_sqlite", "SQLite bridge (libsqlite3/sqlite3.dll). NOTE: no statement-bind export — placeholders unbound",
@@ -83,8 +84,14 @@ MOCHI_MODULES = [
      ["close","connect","httpGet","poll","send"], "operational"),
     ("mochiwasmy", "WebAssembly bridge — PING only; no __wbg_* imports or global bridge yet",
      ["ping"], "stub"),
-    ("mochijsnative", "AOT/JIT native probe helper — FAILS mbjs_call_module init on the current engine build",
-     [], "broken"),
+    ("mochijsnative", "AOT/JIT + WASM native bridge (eval, jit*, runtime*, value*, context*, hostBase/hostExport/lastError)",
+     ["abi","await","bind","call","callValue","contextFree","contextNew","contextStd","detectModule","dumpError",
+      "engineVersion","eval","evalModule","exportNames","exportSignature","getException","getGlobal","getProp",
+      "hostBase","hostExport","jitCall","jitCleanup","jitCompile","jitFree","jitInfo","jitInvoke","jitNew","jitStats",
+      "jsonParse","lastError","loop","runtimeFree","runtimeLimits","runtimeNew","setProp","unbind","valueFree",
+      "valueIsException","valueJson","valueNew","valueToInt","valueToNumber","valueToString","valueType","version"], "verified"),
+    ("mochisandbox", "Realm-isolated sandbox runtime (create/run/runAsync/clone/free/count/setGlobal) with per-realm intrinsic isolation",
+     ["clone","count","create","free","run","runAsync","setGlobal"], "verified"),
 ]
 
 
@@ -167,21 +174,21 @@ def module_readme(name, desc, status):
 
 def node_index_readme():
     out = ["# node_modules — JS-first Node.js shim layer", "",
-           "Paket gaya NPM yang memberi bentuk Node.js di atas engine MochiBerry.",
-           "Orientasi dominan: **JS/script/framework** — tapi satu paket boleh tetap",
-           "memanggil native (`loadNative()` / `dynalib()`) untuk bagian berat.", "",
-           "Layer sebelah: [`../mochi_modules`](../mochi_modules) = plugin native engine.",
+           "NPM-style packages that give the MochiBerry engine a Node.js shape.",
+           "Dominant orientation: **JS/script/framework** — but a package may still",
+           "call native code (`loadNative()` / `dynalib()`) for the heavy parts.", "",
+           "Sibling layer: [`../mochi_modules`](../mochi_modules) = native engine plugins.",
            "",
-           "| module | status | deskripsi |", "|---|---|---|"]
+           "| module | status | description |", "|---|---|---|"]
     for n, d, s in NODE_MODULES:
         out.append("| `%s` | %s | %s |" % (n, s, d))
-    out += ["", "## Cara pakai", "", "```js",
+    out += ["", "## Usage", "", "```js",
             "const { require } = await import('./node_modules/mochinode/index.js');",
             "const crypto = await require('node:crypto');   // -> mochicrypto",
             "const ws = await require('mochiws');", "```", "",
-            "`require()` memanggil `ensureGlobals()` dulu, jadi `setTimeout`, `URL`,",
-            "`fetch`, `TextEncoder`, `crypto`, dll. terpasang otomatis.", "",
-            "Generated by `script/gen_manifests.py` — lihat AGENTS.md for the rules.", ""]
+            "`require()` calls `ensureGlobals()` first, so `setTimeout`, `URL`,",
+            "`fetch`, `TextEncoder`, `crypto`, etc. are installed automatically.", "",
+            "Generated by `script/gen_manifests.py` — see AGENTS.md for the rules.", ""]
     return "\n".join(out)
 
 
@@ -230,6 +237,7 @@ def gen_mochi_modules():
             "entry_point": "mbjs_init_module",
             "engine_symbol_resolution": "native/mbjs_runtime.h (host image symbols)",
             "forbidden": "plugin must not import mbjs.exe directly (Windows error 126)",
+            "throw_contract": "C functions that throw MUST return MBJS_EXCEPTION (not MBJS_UNDEFINED)",
         },
         "platform_bins": {"windows": "_x86_64.dll", "linux": "_x86_64.so / _aarch64.so",
                           "darwin": "_x86_64.dylib / _arm64.dylib"},
@@ -269,8 +277,8 @@ def mochi_readme(name, desc, exports, status):
         out += ["```js"] + ["- `%s`" % e for e in exports] + ["```", ""]
     else:
         out += ["_none — module fails to initialize on the current engine build._", ""]
-    out += ["## JS binding", "", "`node_modules/%s/index.js` membuka binari via " % name,
-            "`mochinode.loadNative('%s.dll')`." % name, "",
+    out += ["## JS binding", "",
+            "`node_modules/%s/index.js` loads the binary via `mochinode.loadNative('%s.dll')`." % (name, name), "",
             "The flat file `mochi_modules/%s.dll` is kept for loader/legacy " % name,
             "compatibility; `lib/%s_x86_64.dll` is the distribution copy with " % name,
             "arch-suffixed naming.", "",
@@ -289,7 +297,7 @@ SOURCE = {
     "mochiglobals": {"js": ["setTimeout", "setInterval", "URL", "TextEncoder", "AbortController", "fetch", "crypto"]},
     "mochicrypto": {"js": ["createCipheriv", "createDecipheriv", "createHash", "createHmac",
                            "pbkdf2Sync", "randomBytes", "timingSafeEqual", "subtle", "webcrypto"]},
-    "mochizlib":   {"js": ["deflateSync", "gunzipSync", "gzipSync", "inflateSync", "unzipSync"]},
+    "mochizlib":   {"js": ["deflateSync", "gunzipSync", "gzipSync", "inflateSync", "unzipSync", "crc32"]},
     "mochifs":     {"js": ["appendFileSync", "copyFileSync", "existsSync", "mkdirSync",
                            "readFileSync", "readdirSync", "renameSync", "statSync", "writeFileSync"]},
     "mochievents": {"js": ["EventEmitter", "once", "on"]},
@@ -300,6 +308,8 @@ SOURCE = {
     "mochitimers": {"js": ["setTimeout", "clearTimeout", "setInterval", "clearInterval"]},
     "mochihttp":   {"js": ["request", "get", "ClientRequest", "IncomingMessage", "STATUS_CODES", "METHODS"]},
     "mochiws":     {"js": ["WebSocket", "connect", "send", "poll", "close", "httpGet"]},
+    "mochihttps":  {"js": ["request", "get"]},
+    "mochisandbox": {"js": ["sandbox", "Sandbox", "count", "load", "isNativeReady"]},
 }
 
 

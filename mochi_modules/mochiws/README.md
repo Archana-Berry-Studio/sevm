@@ -30,8 +30,7 @@ mochi_modules/mochiws/
 
 ## JS binding
 
-`node_modules/mochiws/index.js` membuka binari via 
-`mochinode.loadNative('mochiws.dll')`.
+`node_modules/mochiws/index.js` loads the binary via `mochinode.loadNative('mochiws.dll')`.
 
 The flat file `mochi_modules/mochiws.dll` is kept for loader/legacy 
 compatibility; `lib/mochiws_x86_64.dll` is the distribution copy with 

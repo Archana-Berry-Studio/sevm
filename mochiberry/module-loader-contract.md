@@ -1,39 +1,39 @@
-# Kontrak loader modul native
+# Native module loader contract
 
-Bagaimana engine memuat plugin dari `mochi_modules/` dan aturan yang WAJIB
-dipegang plugin. Ini hasil reverse disassembly `mbjs.exe` + source engine —
-bukan tebakan.
+How the engine loads plugins from `mochi_modules/` and the rules a plugin MUST
+honour. This is the result of reverse-disassembling `mbjs.exe` + engine source —
+not a guess.
 
-## Alur pemuatan
+## Load flow
 
-1. JS memanggil `mochinode.loadNative('<modul>.dll')`.
-2. `loadNative` mencari file di:
-   1. `node_modules/<pkg>/bin/<name><ext>` (biner bundel paket), lalu
-   2. `mochi_modules/<name><ext>` (registry plugin engine).
-3. `loadNative` melakukan `import('<path abs .dll>')`; loader native engine
-   menangani specifier berakhiran `.dll`/`.so`/`.lbrct`.
-4. Engine memanggil titik masuk **`mbjs_init_module(ctx, name)`**.
+1. JS calls `mochinode.loadNative('<module>.dll')`.
+2. `loadNative` searches for the file in:
+   1. `node_modules/<pkg>/bin/<name><ext>` (package-bundled binary), then
+   2. `mochi_modules/<name><ext>` (engine plugin registry).
+3. `loadNative` performs `import('<abs path .dll>')`; the engine's native loader
+   handles specifiers ending in `.dll`/`.so`/`.lbrct`.
+4. The engine calls the entry point **`mbjs_init_module(ctx, name)`**.
 
-## Aturan wajib
+## Mandatory rules
 
-- Titik masuk ekspor DLL **wajib** `mbjs_init_module`.
-- Specifier import **wajib** berakhiran `.dll` (Windows) / `.so` (Linux) /
-  `.lbrct` (platform lain).
-- Di dalam `mbjs_init_module`, panggil `AddModuleExportList(ctx, m, tab, n)`
-  untuk **mendaftarkan nama** ekspor.
-- Di func init modul, panggil `SetModuleExportList(ctx, m, tab, n)` untuk
-  mengisi **nilai** ekspor (lihat pattern `zlib_mod_init` + `mbjs_init_module`
-  di `native/mochizlib.c`).
-- Plugin **tidak boleh** import `mbjs.exe`. Kalau masalah pemuatan plugin adalah
-  Windows error `126`, hampir pasti ia meng-import simbol engine sebagai import
-  statis. Solusi: resolve saat runtime lewat `native/mbjs_runtime.h`
-  (`mbjs_runtime_resolve(&rt)` mengisi tabel fungsi pointer).
+- The DLL's exported entry point **must** be `mbjs_init_module`.
+- The import specifier **must** end in `.dll` (Windows) / `.so` (Linux) /
+  `.lbrct` (other platforms).
+- Inside `mbjs_init_module`, call `AddModuleExportList(ctx, m, tab, n)` to
+  **register the export names**.
+- Inside the module init func, call `SetModuleExportList(ctx, m, tab, n)` to
+  fill in the export **values** (see the `zlib_mod_init` + `mbjs_init_module`
+  pattern in `native/mochizlib.c`).
+- A plugin **must not** import `mbjs.exe`. If the plugin load fails with Windows
+  error `126`, it is almost certainly importing engine symbols as static
+  imports. Fix: resolve at runtime through `native/mbjs_runtime.h`
+  (`mbjs_runtime_resolve(&rt)` fills a function-pointer table).
 
-## Registri ekspor runtime (terukur)
+## Runtime export registry (measured)
 
-Ekspor JS-visible tiap plugin dihitung saat runtime dan dicatat di
-`mochi_modules/manifest.json` dan `mochi_modules/<modul>/manifest.json`.
-Cara mengukur ulang:
+Each plugin's JS-visible exports are counted at runtime and recorded in
+`mochi_modules/manifest.json` and `mochi_modules/<module>/manifest.json`.
+To re-measure:
 
 ```js
 const { loadNative } = await import('./node_modules/mochinode/index.js');

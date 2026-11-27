@@ -1,24 +1,28 @@
 {
   "name": "mochisandbox",
   "version": "0.1.0",
-  "type": "module",
-  "description": "Realm-isolated JS: fresh runtime+context per sandbox, memory limit, instruction budget, strict mode, per-realm microtask queue.",
-  "native": true,
-  "arch": [
-    "x86_64",
-    "aarch64"
-  ],
-  "entry": "script/index.js",
-  "test": "script/test.js",
-  "exports": [
-    "create",
-    "setGlobal",
+  "type": "native-engine-plugin",
+  "description": "Realm-isolated sandbox runtime (create/run/runAsync/clone/free/count/setGlobal) with per-realm intrinsic isolation",
+  "status": "verified",
+  "entry_point": "mbjs_init_module",
+  "runtime_exports": [
     "clone",
+    "count",
+    "create",
+    "free",
     "run",
     "runAsync",
-    "free",
-    "count"
+    "setGlobal"
   ],
-  "author": "Nonamey / Mochi-Berry",
-  "license": "MIT"
+  "sources": [
+    "native/mochisandbox.c"
+  ],
+  "headers": [
+    "include/mochisandbox_abi.h"
+  ],
+  "binaries": {
+    "x86_64-windows": "lib/mochisandbox_x86_64.dll"
+  },
+  "js_binding": "node_modules/mochisandbox",
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
 }
