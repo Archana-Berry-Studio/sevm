@@ -308,7 +308,7 @@ static MBJSValue crypto_pbkdf2(MBJSContext *ctx, MBJSValueConst this_val, int ar
         if (which == 1) alg = BCRYPT_SHA1_ALGORITHM;
         else if (which == 3) alg = BCRYPT_SHA384_ALGORITHM;
         else if (which == 4) alg = BCRYPT_SHA512_ALGORITHM;
-        if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&hPrf, alg, NULL, 0))) {
+        if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&hPrf, alg, NULL, BCRYPT_ALG_HANDLE_HMAC_FLAG) /* HMAC flag required by BCryptDeriveKeyPBKDF2 */)) {
             free(pwd);
             free(salt);
             free(out_buf);
@@ -528,7 +528,6 @@ static MBJSValue crypto_aes_ctr_crypt(MBJSContext *ctx, MBJSValueConst this_val,
     size_t key_len = 0; size_t iv_len = 0; size_t data_len = 0;
     unsigned char *key; unsigned char *iv; unsigned char *data;
     unsigned char counter[16];
-    unsigned char zero[16];
     unsigned char stream[16];
     unsigned char *out = NULL;
     BCRYPT_ALG_HANDLE hAlg = NULL;
@@ -545,17 +544,21 @@ static MBJSValue crypto_aes_ctr_crypt(MBJSContext *ctx, MBJSValueConst this_val,
     if (iv_len < 16) goto fail;
     out = (unsigned char *)malloc(data_len + 1);
     if (!out) goto fail;
-    memset(zero, 0, sizeof(zero));
     memcpy(counter, iv, 16);
     if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, NULL, 0))) goto fail;
-    if (!BCRYPT_SUCCESS(BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, (PUCHAR)BCRYPT_CHAIN_MODE_CBC, (ULONG)((wcslen(BCRYPT_CHAIN_MODE_CBC) + 1) * sizeof(wchar_t)), 0))) goto fail;
+    /* AES-CTR is built as ECB of the counter blocks: AES(key, counter_n) is the
+       keystream for block n. Chaining mode CTR is unavailable here
+       (BCryptSetProperty returns STATUS_INVALID_PARAMETER), so the counter is
+       advanced manually. */
+    if (!BCRYPT_SUCCESS(BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE, (PUCHAR)BCRYPT_CHAIN_MODE_ECB,
+        (ULONG)((wcslen(BCRYPT_CHAIN_MODE_ECB) + 1) * sizeof(wchar_t)), 0))) goto fail;
     hKey = import_aes_key(hAlg, key, (ULONG)key_len);
     if (!hKey) goto fail;
     for (pos = 0; pos < data_len; pos += 16) {
         size_t take = data_len - pos;
         size_t i;
         if (take > 16) take = 16;
-        if (!BCRYPT_SUCCESS(BCryptEncrypt(hKey, counter, 16, NULL, zero, 16, stream, 16, &done, 0))) goto fail;
+        if (!BCRYPT_SUCCESS(BCryptEncrypt(hKey, counter, 16, NULL, NULL, 0, stream, 16, &done, 0))) goto fail;
         for (i = 0; i < take; i++) out[pos + i] = data[pos + i] ^ stream[i];
         for (i = 16; i > 0; i--) {
             counter[i - 1]++;
