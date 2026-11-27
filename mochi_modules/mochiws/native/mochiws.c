@@ -312,6 +312,34 @@ static int parse_url_parts(const char *url, wchar_t *host, DWORD hostCap, wchar_
     return 1;
 }
 
+/* Opt-in TLS relaxation for self-signed / local test servers
+   (equivalent of Node's `rejectUnauthorized: false`). Default OFF: normal
+   certificate + hostname validation applies. Set only for loopback tests. */
+static volatile int s_tls_insecure = 0;
+
+static MBJSValue ws_set_tls_insecure(MBJSContext *ctx, MBJSValueConst this_val, int argc, MBJSValueConst *argv)
+{
+    (void)this_val;
+    if (argc > 0) {
+        MBJSValue n = argv[0];
+        int v = (rt.ToBool != NULL && rt.ToBool(ctx, n)) ? 1 : 0;
+        s_tls_insecure = v;
+    }
+    return MBJS_NewInt32(ctx, s_tls_insecure);
+}
+
+static void ws_apply_tls_flags(HINTERNET connect, int secure)
+{
+    if (!secure || !s_tls_insecure) return;
+    DWORD sec_flags = SECURITY_FLAG_IGNORE_CERT_CN_INVALID
+                    | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID
+                    | SECURITY_FLAG_IGNORE_UNKNOWN_CA
+                    | SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
+    if (!WinHttpSetOption(connect, WINHTTP_OPTION_SECURITY_FLAGS, &sec_flags, sizeof(sec_flags))
+        && mochiws_dbg())
+        fprintf(stderr, "[mochiws-dbg] SET_SECURITY_FLAGS FAILED err=%lu\n", (unsigned long)GetLastError());
+}
+
 static MBJSValue ws_connect(MBJSContext *ctx, MBJSValueConst this_val, int argc, MBJSValueConst *argv)
 {
     char *url;
@@ -345,6 +373,7 @@ static MBJSValue ws_connect(MBJSContext *ctx, MBJSValueConst this_val, int argc,
     if (!c->session) goto fail;
     c->connect = WinHttpConnect(c->session, host, port, 0);
     if (!c->connect) goto fail;
+    ws_apply_tls_flags(c->connect, secure);
     {
         DWORD flags = secure ? WINHTTP_FLAG_SECURE : 0;
         c->request = WinHttpOpenRequest(c->connect, L"GET", pathAndExtra, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
@@ -602,6 +631,7 @@ static MBJSValue ws_http_get(MBJSContext *ctx, MBJSValueConst this_val, int argc
     WinHttpSetTimeouts(session, 10000, 10000, 20000, 30000);
     connect = WinHttpConnect(session, host, port, 0);
     if (!connect) HTTP_FAIL("connect");
+    ws_apply_tls_flags(connect, secure);
     request = WinHttpOpenRequest(connect, L"GET", path[0] ? path : L"/", NULL,
                                  WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
                                  secure ? WINHTTP_FLAG_SECURE : 0);
@@ -740,6 +770,7 @@ static MBJSValue ws_http_request(MBJSContext *ctx, MBJSValueConst this_val,
     WinHttpSetTimeouts(session, 10000, 10000, 20000, 30000);
     connect = WinHttpConnect(session, host, port, 0);
     if (!connect) HTTP_FAIL2("connect");
+    ws_apply_tls_flags(connect, secure);
     request = WinHttpOpenRequest(connect, wmethod, path[0] ? path : L"/", NULL,
                                  WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
                                  secure ? WINHTTP_FLAG_SECURE : 0);
@@ -827,6 +858,7 @@ static int ws_mod_init(MBJSContext *ctx, MBJSModuleDef *m)
         MBJS_CFUNC_DEF("close", 1, ws_close),
         MBJS_CFUNC_DEF("httpGet", 1, ws_http_get),
         MBJS_CFUNC_DEF("httpRequest", 4, ws_http_request),
+        MBJS_CFUNC_DEF("setTlsInsecure", 1, ws_set_tls_insecure),
     };
     return rt.SetModuleExportList(ctx, m, tab, (int)(sizeof(tab) / sizeof(tab[0])));
 }
@@ -840,6 +872,7 @@ MBJS_MODULE_EXTERN MBJSModuleDef *mbjs_init_module(MBJSContext *ctx, const char 
         MBJS_CFUNC_DEF("close", 1, ws_close),
         MBJS_CFUNC_DEF("httpGet", 1, ws_http_get),
         MBJS_CFUNC_DEF("httpRequest", 4, ws_http_request),
+        MBJS_CFUNC_DEF("setTlsInsecure", 1, ws_set_tls_insecure),
     };
     const char *missing = mbjs_runtime_resolve(&rt);
     MBJSModuleDef *m;

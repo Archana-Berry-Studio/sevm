@@ -27,7 +27,7 @@ JS_MODS = ["mochinode", "mochibuffer", "mochipath", "mochistream", "mochiurl",
            "mochiutil", "mochios", "mochihttp", "mochihttps",
            "mochinet", "mochievents", "mochiasync_hooks", "mochidiagnostics_channel",
            "mochiperf_hooks", "mochimodule", "mochiprocess", "mochiglobals",
-           "mochitimers", "mochifetch", "mochijsnative_stub",
+           "mochiworker_threads", "mochitimers", "mochifetch", "mochijsnative_stub",
            "dynalib", "events", "express", "fs", "net", "sqlite"]
 
 GIT = ["git", "-c", "core.autocrlf=false", "-c", "user.name=Gryzzlay Cutzy",
