@@ -79,9 +79,9 @@
       "id": "express-complete",
       "module": "express",
       "layer": "node_modules",
-      "status": "todo",
+      "status": "partial",
       "priority": "medium",
-      "note": "middleware chains, body parsing, static files, templates still open."
+      "note": "MEASURED 2026-11-27: middleware chain (app.use), path params (/items/:id), query, express.json/urlencoded/text body parsers, express.static (with mount-path strip + traversal guard), res.set/type/attachment/redirect all verified 7/7. STILL OPEN: template engines, virtual hosts, app.param, error middleware."
     },
     {
       "id": "sqlite-bind",

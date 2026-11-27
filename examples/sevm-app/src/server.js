@@ -40,7 +40,7 @@ async function main() {
         for (const dir of PUBLIC_CANDIDATES) {
             const path = dir + name;
             try {
-                const data = fs.readFile(path);
+                const data = fs.readFileSync(path);
                 if (data !== null && data !== undefined && String(data).length)
                     return String(data);
             } catch (e) { /* try the next candidate */ }
