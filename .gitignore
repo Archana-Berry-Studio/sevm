@@ -20,3 +20,4 @@ Thumbs.db
 
 # engine build output (not source)
 build_ex/
+.modrepos/
