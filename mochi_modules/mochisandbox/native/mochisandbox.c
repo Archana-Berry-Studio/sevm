@@ -289,10 +289,22 @@ static int sbox_neutralize(Sandbox *sb)
     static const char boot[] =
         "(function(){var realFn=Function;"
         "function deny(){throw new Error('mochisandbox: dynamic code disabled');}"
+        /* Capture every code-compiling intrinsic BEFORE neutering: the plain
+           Function ctor is not the only one - GeneratorFunction / AsyncFunction
+           / AsyncGeneratorFunction compile source too, and they are reachable
+           via Object.getPrototypeOf(fn).constructor. */
+        "var gens=[];"
+        "try{gens.push(Object.getPrototypeOf(function*(){}).constructor);}catch(e){}"
+        "try{gens.push(Object.getPrototypeOf(async function(){}).constructor);}catch(e){}"
+        "try{gens.push(Object.getPrototypeOf(async function*(){}).constructor);}catch(e){}"
         "try{Object.defineProperty(Object.prototype,'constructor',"
         "{value:deny,writable:false,configurable:false});}catch(e){}"
         "try{Object.defineProperty(realFn.prototype,'constructor',"
         "{value:deny,writable:false,configurable:false});}catch(e){}"
+        "for(var i=0;i<gens.length;i++){var C=gens[i];"
+        "if(typeof C!=='function')continue;"
+        "try{Object.defineProperty(C.prototype,'constructor',"
+        "{value:deny,writable:false,configurable:false});}catch(e){}}"
         "globalThis.eval=deny;globalThis.Function=deny;"
         "return true;})()";
     MBJSValue r = sbox_eval(sb, boot, sizeof(boot) - 1, "<sbox-boot>", 0);

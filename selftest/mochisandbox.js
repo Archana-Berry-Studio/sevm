@@ -10,6 +10,12 @@ function check(name, cond) {
     console.log((cond ? 'PASS ' : 'FAIL ') + name);
 }
 
+/* does f() throw with 'msg' in the message? */
+function denies(msg, f) {
+    try { f(); return false; }
+    catch (e) { return String((e && e.message) ? e.message : e).indexOf(msg) >= 0; }
+}
+
 async function main() {
     /* realm isolation: no host globals inside */
     const sb = sandbox({ budgetMs: 5000 });
@@ -47,6 +53,27 @@ async function main() {
     try { sb3.run('({}).constructor.constructor("return 2")()'); } catch (e) { denied = true; }
     check('strict denies constructor chain', denied);
     sb3.free();
+
+    /* security audit vectors — strict mode must deny every code compiler */
+    const sb5 = sandbox({ strict: true, budgetMs: 3000 });
+    check('audit: strict denies GeneratorFunction ctor', denies('dynamic code disabled', () => sb5.eval(
+        "Object.getPrototypeOf(function*(){}).constructor('return 42')().next().value")));
+    check('audit: strict denies AsyncFunction ctor', denies('dynamic code disabled', () => sb5.eval(
+        "Object.getPrototypeOf(async function(){}).constructor('return 42')()")));
+    check('audit: strict denies AsyncGeneratorFunction ctor', denies('dynamic code disabled', () => sb5.eval(
+        "Object.getPrototypeOf(async function*(){}).constructor('return 1')()")));
+    let impBlocked = false;
+    try { sb5.asyncEval("import('fs')"); } catch (e) { impBlocked = true; }
+    check('audit: dynamic import() blocked in realm', impBlocked);
+    check('audit: Atomics.wait cannot block host', denies('cannot block', () => sb5.eval(
+        "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0)")));
+    check('audit: realm has no console', sb5.eval('typeof console') === 'undefined');
+    check('audit: realm has no require', sb5.eval('typeof require') === 'undefined');
+    check('audit: realm has no setTimeout', sb5.eval('typeof setTimeout') === 'undefined');
+    check('audit: realm has no WebAssembly', sb5.eval('typeof WebAssembly') === 'undefined');
+    check('audit: realm global surface is bounded',
+          sb5.eval('Object.getOwnPropertyNames(globalThis).length') < 100);
+    sb5.free();
 
     /* async execution: microtask queue drained, promise settled per realm */
     const sb4 = sandbox({ budgetMs: 5000 });

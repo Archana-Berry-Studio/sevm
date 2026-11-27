@@ -11,6 +11,11 @@ style sandbox**: each sandbox is a *fresh engine runtime + context*, so the
 code inside sees only standard JS intrinsics and whatever you explicitly
 inject with `setGlobal()`.
 
+## Security audit
+
+See [SECURITY.md](SECURITY.md) — measured attack-surface audit (realm isolation,
+dynamic-code bypass found and fixed, DoS probes, leak review).
+
 ## Enforcement (separation of mechanism / policy)
 
 | Capability | Mechanism (engine) | Policy (this module) |
