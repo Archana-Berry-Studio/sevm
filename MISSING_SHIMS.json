@@ -95,9 +95,9 @@
       "id": "worker-threads",
       "module": "mochiworker_threads",
       "layer": "node_modules",
-      "status": "todo",
+      "status": "done",
       "priority": "low",
-      "note": "Worker constructor throws unavailable; isMainThread is hardcoded true."
+      "note": "MEASURED 2026-11-27 (retraction): worker_threads is NOT an engine limitation — the engine ships a real Worker (mbjs-libc.c, compiled with USE_WORKER) exported from mbjs:os. It creates a new runtime+context with a message-pipe pair and loads the named module in the worker. Worker.parent is set inside the worker, so isMainThread/parentPort are DETECTED, not hardcoded. Round trip verified in selftest/mochi-worker.js: parent posts {n:10}, worker computes 10! and posts back {fact:3628800}, parent's 'message' handler receives it, worker reports isMainThread false. Terminate via timer-scheduled promise. Measured limitation: after a Worker is created the host process never exits on its own (no JS-visible exit API), so the selftest reports by printing WORKER_ALL_OK and the harness applies `timeout`. Residual honest limits: no terminate handle, threadId null, workerData not delivered, no 'error' event."
     },
     {
       "id": "process-metrics",

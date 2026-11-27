@@ -51,7 +51,7 @@ NODE_MODULES = [
     ("mochinet",         "node:net shim: Socket.createConnection/connect over mochinode_net.tcpConnect (real client TCP: connect/write/end + 'data' poll loop); createServer still MOCHI_UNSUPPORTED (HTTP server in node_modules/net)", "verified"),
     ("mochidiagnostics_channel", "node:diagnostics_channel shim: no-op channel()", "stub"),
     ("mochiperf_hooks",  "node:perf_hooks shim: performance passthrough + no-op PerformanceObserver", "stub"),
-    ("mochiworker_threads", "node:worker_threads shim: Worker throws unavailable, isMainThread=true", "stub"),
+    ("mochiworker_threads", "node:worker_threads shim: real Worker over mbjs:os.Worker (new runtime+context + message pipe) — round trip verified (10! = 3628800); isMainThread/parentPort detected, not hardcoded; no terminate handle, threadId null, workerData not delivered", "verified"),
     ("mochijsnative",    "AOT/JIT + WASM native bridge (eval/jit*/runtime*/value*/context*, hostBase/hostExport/lastError) — 51 exports verified", "verified"),
     ("mochijsnative_stub", "fallback for mochijsnative when native unavailable", "operational"),
     ("dynalib",          "JS API for libdynalib (dynalib(file, offset, symbol, abi, opts))", "operational"),
