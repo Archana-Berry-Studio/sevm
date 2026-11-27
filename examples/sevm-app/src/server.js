@@ -128,7 +128,7 @@ async function main() {
     app.get('/api/items', (req, res) => {
         const q = req.query.q;
         const rows = q
-            ? db.all("SELECT * FROM items WHERE title LIKE '%" + q + "%'")
+            ? db.all("SELECT * FROM items WHERE title LIKE ?", '%' + q + '%')
             : db.all('SELECT * FROM items ORDER BY id');
         res.json({ count: rows.length, items: rows });
     });
@@ -136,7 +136,7 @@ async function main() {
     app.post('/api/items', (req, res) => {
         let title = 'untitled';
         try { title = JSON.parse(req.body || '{}').title || title; } catch (e) { /* noop */ }
-        db.run("INSERT INTO items(title) VALUES ('" + title.replace(/'/g, "''") + "')");
+        db.run('INSERT INTO items(title) VALUES(?)', String(title));
         res.status(201).json({ ok: true, title });
     });
 

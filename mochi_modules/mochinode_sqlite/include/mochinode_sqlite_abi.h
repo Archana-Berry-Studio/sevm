@@ -6,6 +6,12 @@ extern "C" {
 
 /* ABI for mochinode_sqlite — engine plugin. Entry point: mbjs_init_module().
    Runtime exports (verified via mbjs loadNative): */
+/*   - bindDouble */
+/*   - bindInt */
+/*   - bindNull */
+/*   - bindParameterCount */
+/*   - bindText */
+/*   - clearBindings */
 /*   - close */
 /*   - columnBlobHex */
 /*   - columnCount */
@@ -19,6 +25,7 @@ extern "C" {
 /*   - finalize */
 /*   - open */
 /*   - prepare */
+/*   - reset */
 /*   - step */
 /*   - version */
 #ifdef __cplusplus

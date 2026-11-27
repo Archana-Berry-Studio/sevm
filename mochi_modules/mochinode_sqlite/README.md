@@ -1,9 +1,9 @@
 # mochi_modules/mochinode_sqlite
 
-SQLite bridge (libsqlite3/sqlite3.dll). NOTE: no statement-bind export — placeholders unbound
+SQLite bridge (libsqlite3/sqlite3.dll). Parameterized statements: bindText/bindInt/bindDouble/bindNull/reset/clearBindings/bindParameterCount
 
 - **Orientation**: native-first (engine plugin, loaded by the engine)
-- **Status**: operational — implemented, integration/network dependent
+- **Status**: verified — exercised against mbjs.exe
 - **Entry point**: `mbjs_init_module(ctx, name)`
 
 ## Layout
@@ -21,6 +21,12 @@ mochi_modules/mochinode_sqlite/
 ## Runtime exports (JS-visible, measured on mbjs.exe)
 
 ```js
+- `bindDouble`
+- `bindInt`
+- `bindNull`
+- `bindParameterCount`
+- `bindText`
+- `clearBindings`
 - `close`
 - `columnBlobHex`
 - `columnCount`
@@ -34,6 +40,7 @@ mochi_modules/mochinode_sqlite/
 - `finalize`
 - `open`
 - `prepare`
+- `reset`
 - `step`
 - `version`
 ```

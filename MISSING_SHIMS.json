@@ -87,9 +87,9 @@
       "id": "sqlite-bind",
       "module": "sqlite",
       "layer": "node_modules",
-      "status": "todo",
+      "status": "done",
       "priority": "high",
-      "note": "MEASURED: mochinode_sqlite.dll has NO bind export (close/column*/exec/finalize/open/prepare/step/version only). Prepared-statement placeholders are unbound."
+      "note": "MEASURED 2026-11-27: 22 native exports (added bindText/bindInt/bindDouble/bindNull/reset/clearBindings/bindParameterCount). JS face sqlite.run/all/get accept params; prepare().bind().run()/all(); demo POST uses parameterized INSERT (no SQL injection; O'Brien + OR-literal stored verbatim). exec error throws (MBJS_EXCEPTION)."
     },
     {
       "id": "worker-threads",

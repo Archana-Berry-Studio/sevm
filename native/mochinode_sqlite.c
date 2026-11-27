@@ -56,6 +56,15 @@ typedef int (*sq_close_t)(sqlite3 *);
 typedef const char *(*sq_errmsg_t)(sqlite3 *);
 typedef void (*sq_free_t)(void *);
 typedef int (*sq_init_t)(void);
+typedef int (*sq_bind_text_t)(sqlite3_stmt *, int, const char *, int,
+                              void (*)(void *));
+typedef int (*sq_bind_int_t)(sqlite3_stmt *, int, int);
+typedef int (*sq_bind_int64_t)(sqlite3_stmt *, int, long long);
+typedef int (*sq_bind_double_t)(sqlite3_stmt *, int, double);
+typedef int (*sq_bind_null_t)(sqlite3_stmt *, int);
+typedef int (*sq_reset_t)(sqlite3_stmt *);
+typedef int (*sq_clear_bindings_t)(sqlite3_stmt *);
+typedef int (*sq_bind_parameter_count_t)(sqlite3_stmt *);
 
 static sq_version_t    sq_version;
 static sq_open_t       sq_open;
@@ -75,6 +84,14 @@ static sq_close_t      sq_close;
 static sq_errmsg_t     sq_errmsg;
 static sq_free_t       sq_free;
 static sq_init_t       sq_initialize;
+static sq_bind_text_t  sq_bind_text;
+static sq_bind_int_t   sq_bind_int;
+static sq_bind_int64_t sq_bind_int64;
+static sq_bind_double_t sq_bind_double;
+static sq_bind_null_t  sq_bind_null;
+static sq_reset_t      sq_reset;
+static sq_clear_bindings_t sq_clear_bindings;
+static sq_bind_parameter_count_t sq_bind_parameter_count;
 
 static int sq_load(void)
 {
@@ -129,6 +146,14 @@ static int sq_load(void)
     SQ_SYM(sq_errmsg, "sqlite3_errmsg");
     SQ_SYM(sq_free, "sqlite3_free");
     SQ_SYM(sq_initialize, "sqlite3_initialize");
+    SQ_SYM(sq_bind_text, "sqlite3_bind_text");
+    SQ_SYM(sq_bind_int, "sqlite3_bind_int");
+    SQ_SYM(sq_bind_int64, "sqlite3_bind_int64");
+    SQ_SYM(sq_bind_double, "sqlite3_bind_double");
+    SQ_SYM(sq_bind_null, "sqlite3_bind_null");
+    SQ_SYM(sq_reset, "sqlite3_reset");
+    SQ_SYM(sq_clear_bindings, "sqlite3_clear_bindings");
+    SQ_SYM(sq_bind_parameter_count, "sqlite3_bind_parameter_count");
 #undef SQ_SYM
     /* sqlite3_open crashes under lazy init on this build of sqlite3.dll;
      * initialize explicitly before any first use. */
@@ -202,9 +227,12 @@ static MBJSValue sq_exec_fn(MBJSContext *ctx, MBJSValueConst this_val,
         return MBJS_NewInt32(ctx, -1);
     rc = sq_exec((sqlite3 *)db, sql, NULL, NULL, &err);
     if (err) {
-        /* surface the error message as a JS exception */
+        /* surface the error message as a JS exception; a throwing C function
+         * MUST return MBJS_EXCEPTION (see mochiberry/module-loader-contract.md) */
         rt.ThrowTypeError(ctx, "sqlite: %s", err);
         sq_free(err);
+        rt.FreeCString(ctx, sql);
+        return MBJS_EXCEPTION;
     }
     rt.FreeCString(ctx, sql);
     return MBJS_NewInt32(ctx, rc);
@@ -382,10 +410,116 @@ static MBJSValue sq_errmsg_fn(MBJSContext *ctx, MBJSValueConst this_val,
 }
 
 /* ------------------------------------------------------------------ */
+/* bind/reset API (parameterized statements)                          */
+/* ------------------------------------------------------------------ */
+
+/* SQLITE_TRANSIENT: sqlite3 copies the bound string before step() */
+#define SQLITE_TRANSIENT ((void (*)(void *))-1)
+
+/* bindText(stmt, idx, text) -> rc  (idx is 1-based, as in SQLite) */
+static MBJSValue sq_bind_text_fn(MBJSContext *ctx, MBJSValueConst this_val,
+                                 int argc, MBJSValueConst *argv)
+{
+    void *st = NULL;
+    double idx = 0;
+    const char *text;
+    size_t len = 0;
+    int rc;
+    (void)this_val;
+    if (argc < 3 || js_to_ptr(ctx, argv[0], &st) < 0 ||
+        rt.ToFloat64(ctx, &idx, argv[1]) < 0)
+        return MBJS_NewInt32(ctx, -1);
+    text = rt.ToCStringLen(ctx, &len, argv[2]);
+    if (!text)
+        return MBJS_NewInt32(ctx, -1);
+    rc = sq_bind_text((sqlite3_stmt *)st, (int)idx, text, (int)len,
+                      SQLITE_TRANSIENT);
+    rt.FreeCString(ctx, text);
+    return MBJS_NewInt32(ctx, rc);
+}
+
+/* bindInt(stmt, idx, n) -> rc */
+static MBJSValue sq_bind_int_fn(MBJSContext *ctx, MBJSValueConst this_val,
+                                int argc, MBJSValueConst *argv)
+{
+    void *st = NULL;
+    double idx = 0, num = 0;
+    (void)this_val;
+    if (argc < 3 || js_to_ptr(ctx, argv[0], &st) < 0 ||
+        rt.ToFloat64(ctx, &idx, argv[1]) < 0 ||
+        rt.ToFloat64(ctx, &num, argv[2]) < 0)
+        return MBJS_NewInt32(ctx, -1);
+    return MBJS_NewInt32(ctx, sq_bind_int64((sqlite3_stmt *)st, (int)idx,
+                                            (long long)num));
+}
+
+/* bindDouble(stmt, idx, d) -> rc */
+static MBJSValue sq_bind_double_fn(MBJSContext *ctx, MBJSValueConst this_val,
+                                   int argc, MBJSValueConst *argv)
+{
+    void *st = NULL;
+    double idx = 0, num = 0;
+    (void)this_val;
+    if (argc < 3 || js_to_ptr(ctx, argv[0], &st) < 0 ||
+        rt.ToFloat64(ctx, &idx, argv[1]) < 0 ||
+        rt.ToFloat64(ctx, &num, argv[2]) < 0)
+        return MBJS_NewInt32(ctx, -1);
+    return MBJS_NewInt32(ctx, sq_bind_double((sqlite3_stmt *)st, (int)idx, num));
+}
+
+/* bindNull(stmt, idx) -> rc */
+static MBJSValue sq_bind_null_fn(MBJSContext *ctx, MBJSValueConst this_val,
+                                 int argc, MBJSValueConst *argv)
+{
+    void *st = NULL;
+    double idx = 0;
+    (void)this_val;
+    if (argc < 2 || js_to_ptr(ctx, argv[0], &st) < 0 ||
+        rt.ToFloat64(ctx, &idx, argv[1]) < 0)
+        return MBJS_NewInt32(ctx, -1);
+    return MBJS_NewInt32(ctx, sq_bind_null((sqlite3_stmt *)st, (int)idx));
+}
+
+/* reset(stmt) -> rc  (reuse a prepared statement for the next row batch) */
+static MBJSValue sq_reset_fn(MBJSContext *ctx, MBJSValueConst this_val,
+                             int argc, MBJSValueConst *argv)
+{
+    void *st = NULL;
+    (void)this_val; (void)ctx;
+    if (argc < 1 || js_to_ptr(ctx, argv[0], &st) < 0)
+        return MBJS_NewInt32(ctx, -1);
+    return MBJS_NewInt32(ctx, sq_reset((sqlite3_stmt *)st));
+}
+
+/* clearBindings(stmt) -> rc */
+static MBJSValue sq_clear_bindings_fn(MBJSContext *ctx, MBJSValueConst this_val,
+                                      int argc, MBJSValueConst *argv)
+{
+    void *st = NULL;
+    (void)this_val; (void)ctx;
+    if (argc < 1 || js_to_ptr(ctx, argv[0], &st) < 0)
+        return MBJS_NewInt32(ctx, -1);
+    return MBJS_NewInt32(ctx, sq_clear_bindings((sqlite3_stmt *)st));
+}
+
+/* bindParameterCount(stmt) -> int */
+static MBJSValue sq_bind_parameter_count_fn(MBJSContext *ctx,
+                                            MBJSValueConst this_val,
+                                            int argc, MBJSValueConst *argv)
+{
+    void *st = NULL;
+    (void)this_val; (void)ctx;
+    if (argc < 1 || js_to_ptr(ctx, argv[0], &st) < 0)
+        return MBJS_NewInt32(ctx, 0);
+    return MBJS_NewInt32(ctx,
+                         sq_bind_parameter_count((sqlite3_stmt *)st));
+}
+
+/* ------------------------------------------------------------------ */
 /* module plumbing                                                     */
 /* ------------------------------------------------------------------ */
 
-#define SQ_TAB_LEN 15
+#define SQ_TAB_LEN 22
 
 static const MBJSCFunctionListEntry sq_tab[SQ_TAB_LEN] = {
     MBJS_CFUNC_DEF("version", 0, sq_version_fn),
@@ -403,6 +537,13 @@ static const MBJSCFunctionListEntry sq_tab[SQ_TAB_LEN] = {
     MBJS_CFUNC_DEF("finalize", 1, sq_finalize_fn),
     MBJS_CFUNC_DEF("close", 1, sq_close_fn),
     MBJS_CFUNC_DEF("errmsg", 1, sq_errmsg_fn),
+    MBJS_CFUNC_DEF("bindText", 3, sq_bind_text_fn),
+    MBJS_CFUNC_DEF("bindInt", 3, sq_bind_int_fn),
+    MBJS_CFUNC_DEF("bindDouble", 3, sq_bind_double_fn),
+    MBJS_CFUNC_DEF("bindNull", 2, sq_bind_null_fn),
+    MBJS_CFUNC_DEF("reset", 1, sq_reset_fn),
+    MBJS_CFUNC_DEF("clearBindings", 1, sq_clear_bindings_fn),
+    MBJS_CFUNC_DEF("bindParameterCount", 1, sq_bind_parameter_count_fn),
 };
 
 static int sq_mod_init(MBJSContext *ctx, MBJSModuleDef *m)

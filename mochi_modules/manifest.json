@@ -89,8 +89,14 @@
     },
     {
       "name": "mochinode_sqlite",
-      "description": "SQLite bridge (libsqlite3/sqlite3.dll). NOTE: no statement-bind export — placeholders unbound",
+      "description": "SQLite bridge (libsqlite3/sqlite3.dll). Parameterized statements: bindText/bindInt/bindDouble/bindNull/reset/clearBindings/bindParameterCount",
       "exports": [
+        "bindDouble",
+        "bindInt",
+        "bindNull",
+        "bindParameterCount",
+        "bindText",
+        "clearBindings",
         "close",
         "columnBlobHex",
         "columnCount",
@@ -104,10 +110,11 @@
         "finalize",
         "open",
         "prepare",
+        "reset",
         "step",
         "version"
       ],
-      "status": "operational",
+      "status": "verified",
       "path": "mochi_modules/mochinode_sqlite"
     },
     {
