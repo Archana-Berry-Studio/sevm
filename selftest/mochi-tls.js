@@ -68,7 +68,16 @@ for (const ep of endpoints) {
   }
   console.log('  response head: ' + resp.slice(0, 72).replace(/\s+/g, ' '));
   console.log('  response bytes: ' + resp.length);
-  check('HTTP status line 200', ep.status.test(resp));
+  if (!ep.status.test(resp)) {
+    /* endpoint reachable but not 200 (e.g. example.com now returns 403 to
+     * non-browser UAs). Do not count it as a failure yet — try the next. */
+    console.log('  ' + ep.host + ' did not return 200 (got: ' +
+                resp.split('\r\n')[0] + '); trying next endpoint');
+    await tls.close(handle);
+    continue;
+  }
+  done = true;
+  check('HTTP status line 200', true);
   check('body marker present (' + ep.body + ')', resp.includes(ep.body));
 
   await tls.close(handle);

@@ -184,8 +184,16 @@ static MBJSValue net_httpClose(MBJSContext *ctx, MBJSValueConst this_val,
     SOCKET s;
     (void)ctx;
     (void)this_val;
-    if (argc >= 1 && get_fd(argv[0], &s) == 0)
+    if (argc >= 1 && get_fd(argv[0], &s) == 0) {
+        /* Graceful half-close: flush queued send data and send FIN before
+         * closesocket. A bare closesocket() with SO_LINGER off is an abrupt
+         * close on Windows: it discards anything still in the kernel send
+         * buffer and sends RST. Measured effect: responses larger than a few
+         * hundred bytes were truncated or dropped (a 9882-byte app.js arrived
+         * as 9864, a 12 KB PNG as 0 bytes). shutdown(SD_SEND) fixes it. */
+        shutdown(s, SD_SEND);
         closesocket(s);
+    }
     return MBJS_UNDEFINED;
 }
 

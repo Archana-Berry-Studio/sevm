@@ -49,7 +49,14 @@ for (const ep of endpoints) {
   for (let i = 0; i < 100 && dataBuf.length < 200; i++) await new Promise((r) => osSetTimeout(r, 100));
   console.log('  response head: ' + dataBuf.slice(0, 60).replace(/\s+/g, ' '));
   console.log('  response bytes: ' + dataBuf.length);
-  check('HTTP 200', /HTTP\/1\.[01] 200/.test(dataBuf));
+  if (!/HTTP\/1\.[01] 200/.test(dataBuf)) {
+    console.log('  ' + ep.host + ' did not return 200 (got: ' +
+                dataBuf.split('\r\n')[0] + '); trying next endpoint');
+    sock.end();
+    continue;
+  }
+  done = true;
+  check('HTTP 200', true);
   check('body marker (' + ep.body + ')', dataBuf.includes(ep.body));
 
   sock.end();

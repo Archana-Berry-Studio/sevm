@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0d1117">
+<meta name="description" content="Offline-first notes served by the SEVM MochiBerry engine">
+<title>SEVM Notes · Offline-First PWA</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+
+<link rel="stylesheet" href="/notes.css">
+<script src="/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app" class="wrap">
+  <header>
+    <h1>SEVM <span class="berry">Notes</span></h1>
+    <div class="sub">
+      <span class="badge">engine: {{ health.engine }}</span>
+      <span class="badge">sqlite: {{ health.sqlite }}</span>
+      <span class="badge">notes: {{ notes.length }}</span>
+      <span class="badge" :class="online ? 'ok' : 'warn'">
+        {{ online ? 'online' : 'offline' }}
+      </span>
+    </div>
+    <p class="sync" v-if="pendingCount">&#8635; {{ pendingCount }} queued write(s) — retrying…</p>
+  </header>
+
+  <section class="card compose">
+    <input type="text" v-model="newTitle" placeholder="Note title…" @keyup.enter="create">
+    <textarea v-model="newBody" placeholder="Write something (offline-safe)…" rows="3"></textarea>
+    <div class="row">
+      <div class="swatches">
+        <button v-for="c in colors" :key="c" class="swatch" :class="[c, { sel: newColor === c }]"
+                :title="c" @click="newColor = c"></button>
+      </div>
+      <button class="primary" @click="create">Add note</button>
+    </div>
+  </section>
+
+  <section class="toolbar">
+    <input type="text" v-model="q" placeholder="Search notes…" @input="search">
+  </section>
+
+  <ul class="notes">
+    <li v-for="n in notes" :key="n.id" class="card note" :class="['c-' + n.color, { pinned: n.pinned }]">
+      <div class="note-head">
+        <input v-model="n.title" class="title-input" @change="save(n)">
+        <div class="note-actions">
+          <button class="ghost" :title="n.pinned ? 'unpin' : 'pin'" @click="togglePin(n)">
+            {{ n.pinned ? '&#9733;' : '&#9734;' }}
+          </button>
+          <button class="ghost" title="delete" @click="remove(n)">&#10005;</button>
+        </div>
+      </div>
+      <textarea v-model="n.body" class="body-input" rows="3" @change="save(n)"></textarea>
+      <div class="note-meta">
+        <span>{{ fmt(n.updated_at) }}</span>
+        <button v-for="c in colors" :key="c" class="swatch sm" :class="[c, { sel: n.color === c }]"
+                @click="setColor(n, c)"></button>
+      </div>
+    </li>
+    <li v-if="!notes.length" class="empty">No notes yet — add one above.</li>
+  </ul>
+
+  <footer class="meta">served by the MochiBerry engine · SQLite on the server · IndexedDB outbox for offline writes</footer>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
