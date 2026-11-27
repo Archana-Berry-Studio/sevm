@@ -181,7 +181,10 @@ def push_repo(repo, mod, desc):
         sh(["git", "remote", "add", "origin", url], cwd=repo)
     else:
         sh(["git", "remote", "set-url", "origin", url], cwd=repo)
-    out = subprocess.run(["git", "push", "-u", "origin", "main"], cwd=repo,
+    # The staging repo is rebuilt fresh each run (single commit), so a refresh
+    # is a non-fast-forward against the remote. We are the sole committer of
+    # these module repos, so force-push is safe and keeps the refresh simple.
+    out = subprocess.run(["git", "push", "-f", "-u", "origin", "main"], cwd=repo,
                          capture_output=True, text=True)
     if out.returncode == 0:
         return "pushed"
