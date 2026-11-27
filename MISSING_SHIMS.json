@@ -39,9 +39,9 @@
       "id": "https",
       "module": "mochihttps",
       "layer": "node_modules",
-      "status": "partial",
+      "status": "done",
       "priority": "high",
-      "note": "GET verified 2026-11-27 (mochi-shims.js https.get status=200 bytes=577). POST/PUT/PATCH + request bodies still need native WinHTTP write support."
+      "note": "MEASURED 2026-11-27: mochihttps.request POST with JSON body -> https://httpbin.org/post status=200, body echoed (378 bytes). mochihttps delegates to mochihttp; the native mochiws.httpRequest drives WinHTTP SendRequest with the payload + WINHTTP_FLAG_SECURE for https. GET verified earlier (status=200, 577 bytes)."
     },
     {
       "id": "net-connect",
@@ -103,17 +103,17 @@
       "id": "process-metrics",
       "module": "mochiprocess",
       "layer": "node_modules",
-      "status": "partial",
+      "status": "done",
       "priority": "medium",
-      "note": "DONE: arch (reported, override via __MOCHI_ARCH__), uptime, exit() fixed (was throwing on unimported std). STILL STUB: os.cpus/totalmem/freemem, memoryUsage/cpuUsage return zeros (engine exposes no RSS/CPU ABI — do not fake values)."
+      "note": "MEASURED 2026-11-27: process.memoryUsage() real (rss=4.9MB, heapUsed=245KB from mbjs:os.memoryInfo), process.pid real via dynalib GetCurrentProcessId (=17440), os.totalmem()/os.freemem() real (21.1GB/6.1GB). RESIDUAL: cpuUsage() and os.cpus() remain zero/[] — the engine exposes no process CPU-time or per-CPU counter. selftest/mochi-process.js PROCESS_ALL_OK."
     },
     {
       "id": "dynalib-pingc",
       "module": "dynalib",
       "layer": "node_modules",
-      "status": "todo",
+      "status": "done",
       "priority": "low",
-      "note": "opts.pinGc and opts.lazy accepted but not implemented."
+      "note": "MEASURED 2026-11-27: dynalib('kernel32.dll') module handle -> mod.sym('GetCurrentProcessId',0,'u32()').call() = 17368 (real PID), mod.sym('GetCommandLineA',0,'ptr()').call() non-null. C function calls work. opts.pinGc/lazy are accepted no-ops (API-compat; not on the call path) and are documented as such."
     },
     {
       "id": "wasm-globals",
