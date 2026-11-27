@@ -47,7 +47,7 @@ NODE_MODULES = [
     ("mochihttp",        "node:http shim: ClientRequest/IncomingMessage; get() over httpGet, request() over httpRequest — POST/PUT/PATCH/DELETE with body verified (201, body echoed)", "verified"),
     ("mochihttps",       "node:https shim: request()/get() delegated to mochihttp (POST/PUT/PATCH inherited)", "verified"),
     ("mochiasync_hooks", "node:async_hooks shim: AsyncLocalStorage (single-context, non-async-correct)", "stub"),
-    ("mochitls",         "node:tls shim: TLSSocket marker only, connect() unsupported", "stub"),
+    ("mochitls",         "node:tls shim: real Schannel TLS client — TLSSocket.connect over mochitls.dll (full chain + hostname validation, TLS 1.2/1.3); createServer unsupported", "verified"),
     ("mochinet",         "node:net shim: Socket.createConnection/connect over mochinode_net.tcpConnect (real client TCP: connect/write/end + 'data' poll loop); createServer still MOCHI_UNSUPPORTED (HTTP server in node_modules/net)", "verified"),
     ("mochidiagnostics_channel", "node:diagnostics_channel shim: no-op channel()", "stub"),
     ("mochiperf_hooks",  "node:perf_hooks shim: performance passthrough + no-op PerformanceObserver", "stub"),

@@ -1,0 +1,28 @@
+{
+  "name": "mochitls",
+  "version": "0.1.0",
+  "type": "native-engine-plugin",
+  "description": "Schannel TLS client over Winsock2: tlsConnect/tlsWrite/tlsRead/tlsClose/tlsShutdown/tlsLastError/tlsVersion with full certificate chain validation",
+  "status": "verified",
+  "entry_point": "mbjs_init_module",
+  "runtime_exports": [
+    "tlsConnect",
+    "tlsWrite",
+    "tlsRead",
+    "tlsClose",
+    "tlsShutdown",
+    "tlsLastError",
+    "tlsVersion"
+  ],
+  "sources": [
+    "native/mochitls.c"
+  ],
+  "headers": [
+    "include/mochitls_abi.h"
+  ],
+  "binaries": {
+    "x86_64-windows": "lib/mochitls_x86_64.dll"
+  },
+  "js_binding": "node_modules/mochitls",
+  "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
+}

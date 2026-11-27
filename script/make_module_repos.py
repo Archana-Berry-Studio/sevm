@@ -21,7 +21,7 @@ ARCH = "x86_64"
 # which native modules have real source+binary (mochi_modules native-first)
 NATIVE_MODS = ["mochizlib", "mochifs", "mochicrypto", "mochiws",
                "mochinode_net", "mochinode_dynalib", "mochinode_sqlite",
-               "mochiwasmy", "mochijsnative"]
+               "mochiwasmy", "mochijsnative", "mochitls"]
 # which node_modules dirs are real JS-first modules (skip pure-asset dirs)
 JS_MODS = ["mochinode", "mochibuffer", "mochipath", "mochistream", "mochiurl",
            "mochiutil", "mochios", "mochihttp", "mochihttps", "mochitls",

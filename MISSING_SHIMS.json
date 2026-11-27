@@ -55,9 +55,9 @@
       "id": "tls-connect",
       "module": "mochitls",
       "layer": "node_modules",
-      "status": "todo",
+      "status": "done",
       "priority": "medium",
-      "note": "TLSSocket.connect still unsupported; marker class only."
+      "note": "MEASURED 2026-11-27: mochitls.dll native (Schannel) — 7 exports tlsConnect/tlsWrite/tlsRead/tlsClose/tlsShutdown/tlsLastError/tlsVersion. Full certificate-chain + hostname validation ON (default credentials; wrong.host.badssl.com rejected SEC_E_WRONG_PRINCIPAL 0x80090322). Negotiated TLS 1.2, cipher TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256. selftest/mochi-tls.js TLS_ALL_OK; public shim selftest/mochi-tls-socket.js TLS_SOCKET_ALL_OK (HTTP 200, Example Domain). Root-cause fixes: DecryptMessage needs SECBUFFER_DATA (not TOKEN), handshake 3-buffer + SECBUFFER_EXTRA handling, ISC_REQ_STREAM, SEC_E_INCOMPLETE_MESSAGE retry."
     },
     {
       "id": "http-methods",
