@@ -2293,10 +2293,38 @@ async function main() {
     /* per-function slice: recompile the plugins we own with only the
        functions the program actually calls */
     function bakeBytesOf(b) { return b.sliced ? b.sliced.bytes : b.bytes; }
+    /* MochiBake: alias slice for a foreign (not-owned) DLL. When the DLL is
+       marked for borrow (MB_ALIAS_BORROW=<name>[,<name>...]) and every used
+       symbol is a real PE export, the baked blob is a tiny forwarding shim
+       (mbshim) that the OS loader resolves to the *original dynamic library*
+       at load time — so the implementation is borrowed, not embedded, and
+       only the called symbols are pulled. */
+    const ALIAS_BORROW = new Set(
+        (process.env.MB_ALIAS_BORROW || '').split(',').map(s => s.trim()).filter(Boolean));
+    const mbshimPath = __dirname + '/mbshim.cjs';
+    function aliasBorrow(b) {
+        if (!ALIAS_BORROW.has(b.name)) return null;
+        if (!b.symbols.length) return null;
+        if (!b.info || !b.info.exports) return null;
+        const exps = b.info.exports;
+        for (const s of b.symbols) if (!exps.includes(s)) return null; /* safe fallback */
+        const dir = join(SLICE_DIR, 'alias-' + b.name.replace(/\.[^.]*$/, ''));
+        const r = require('child_process').spawnSync(
+            process.execPath, [mbshimPath, b.path, '--out', dir].concat(b.symbols),
+            { encoding: 'utf8' });
+        if (r.status !== 0) { console.log('  alias ' + b.name + ': FAILED (' + r.stderr + ') bake whole'); return null; }
+        const shim = readBytes(join(dir, 'alias_' + b.name.replace(/\.[^.]*$/, '') + '.dll'));
+        const sinfo = peInfo(shim);
+        return { bytes: shim, info: sinfo, kept: b.symbols.length, removed: -1, borrow: b.name };
+    }
     for (const b of bakes) {
         const recipe = NATIVE_RECIPES[b.name];
         b.sliced = null;
-        if (!recipe) { console.log('  slice ' + b.name + ': no recipe, bake whole'); continue; }
+        if (!recipe) {
+            const al = aliasBorrow(b);
+            if (al) { b.sliced = al; continue; }
+            console.log('  slice ' + b.name + ': no recipe, bake whole'); continue;
+        }
         if (!b.symbols.length) { console.log('  slice ' + b.name + ': no symbol manifest, bake whole'); continue; }
         const r = compileSliced(b.name, recipe, new Set(b.symbols));
         if (!r.ok) {
