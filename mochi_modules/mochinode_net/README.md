@@ -1,9 +1,9 @@
 # mochi_modules/mochinode_net
 
-Blocking TCP/HTTP server primitives over Winsock2 (httpServer/httpAccept/httpRead/httpWrite/httpClose)
+TCP/HTTP over Winsock2: server (httpServer/httpAccept/httpRead/httpWrite/httpClose) + client tcpConnect (non-blocking connect + 5s select)
 
 - **Orientation**: native-first (engine plugin, loaded by the engine)
-- **Status**: operational — implemented, integration/network dependent
+- **Status**: verified — exercised against mbjs.exe
 - **Entry point**: `mbjs_init_module(ctx, name)`
 
 ## Layout
@@ -26,6 +26,7 @@ mochi_modules/mochinode_net/
 - `httpRead`
 - `httpServer`
 - `httpWrite`
+- `tcpConnect`
 ```
 
 ## JS binding

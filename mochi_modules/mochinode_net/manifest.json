@@ -2,15 +2,16 @@
   "name": "mochinode_net",
   "version": "0.1.0",
   "type": "native-engine-plugin",
-  "description": "Blocking TCP/HTTP server primitives over Winsock2 (httpServer/httpAccept/httpRead/httpWrite/httpClose)",
-  "status": "operational",
+  "description": "TCP/HTTP over Winsock2: server (httpServer/httpAccept/httpRead/httpWrite/httpClose) + client tcpConnect (non-blocking connect + 5s select)",
+  "status": "verified",
   "entry_point": "mbjs_init_module",
   "runtime_exports": [
     "httpAccept",
     "httpClose",
     "httpRead",
     "httpServer",
-    "httpWrite"
+    "httpWrite",
+    "tcpConnect"
   ],
   "sources": [
     "native/mochinode_net.c"

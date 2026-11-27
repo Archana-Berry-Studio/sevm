@@ -189,6 +189,91 @@ static MBJSValue net_httpClose(MBJSContext *ctx, MBJSValueConst this_val,
     return MBJS_UNDEFINED;
 }
 
+/* tcpConnect(host, port) -> fd (connected client socket), or -1 on error.
+ * Non-blocking connect + select with a 5s timeout, so the engine is never
+ * frozen by an unreachable host. The returned fd is usable with
+ * httpRead/httpWrite/httpClose. */
+static MBJSValue net_tcpConnect(MBJSContext *ctx, MBJSValueConst this_val,
+                                int argc, MBJSValueConst *argv)
+{
+    SOCKET s;
+    struct sockaddr_in addr;
+    const char *host;
+    size_t hostLen;
+    int port, err;
+    double d = 0;
+    u_long nb = 1;
+    fd_set wfds;
+    struct timeval tv;
+
+    (void)this_val;
+    if (argc < 2)
+        return MBJS_NewInt32(ctx, -1);
+    host = rt.ToCStringLen(ctx, &hostLen, argv[0]);
+    if (!host || hostLen == 0) {
+        rt.FreeCString(ctx, host);
+        return MBJS_NewInt32(ctx, -1);
+    }
+    if (rt.ToFloat64(ctx, &d, argv[1]) < 0) {
+        rt.FreeCString(ctx, host);
+        return MBJS_NewInt32(ctx, -1);
+    }
+    port = (int)d;
+    if (wsa_init() < 0) {
+        rt.FreeCString(ctx, host);
+        return MBJS_NewInt32(ctx, -1);
+    }
+
+    s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == INVALID_SOCKET) {
+        rt.FreeCString(ctx, host);
+        return MBJS_NewInt32(ctx, -1);
+    }
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((u_short)port);
+    addr.sin_addr.s_addr = inet_addr(host);
+    if (addr.sin_addr.s_addr == INADDR_NONE) {
+        struct hostent *he = gethostbyname(host);
+        if (!he || !he->h_addr || he->h_length != 4) {
+            closesocket(s);
+            rt.FreeCString(ctx, host);
+            return MBJS_NewInt32(ctx, -1);
+        }
+        memcpy(&addr.sin_addr, he->h_addr, he->h_length);
+    }
+    rt.FreeCString(ctx, host);
+
+    /* non-blocking connect; wait for completion with a bounded select */
+    ioctlsocket(s, FIONBIO, &nb);
+    if (connect(s, (struct sockaddr *)&addr, sizeof(addr)) == SOCKET_ERROR) {
+        err = WSAGetLastError();
+        if (err != WSAEWOULDBLOCK && err != WSAEINPROGRESS && err != WSAEINVAL) {
+            closesocket(s);
+            return MBJS_NewInt32(ctx, -1);
+        }
+        FD_ZERO(&wfds);
+        FD_SET(s, &wfds);
+        tv.tv_sec = 5;
+        tv.tv_usec = 0;
+        if (select(0, NULL, &wfds, NULL, &tv) <= 0) {
+            closesocket(s);
+            return MBJS_NewInt32(ctx, -1);
+        }
+        {
+            int soerr = 0, slen = (int)sizeof(soerr);
+            getsockopt(s, SOL_SOCKET, SO_ERROR, (char *)&soerr, &slen);
+            if (soerr != 0) {
+                closesocket(s);
+                return MBJS_NewInt32(ctx, -1);
+            }
+        }
+    }
+    /* leave the socket non-blocking; httpRead/Write handle partial results */
+    return MBJS_NewFloat64(ctx, fd_to_js(s));
+}
+
 /* ------------------------------------------------------------------ */
 /* module plumbing                                                     */
 /* ------------------------------------------------------------------ */
@@ -201,8 +286,9 @@ static int net_mod_init(MBJSContext *ctx, MBJSModuleDef *m)
         MBJS_CFUNC_DEF("httpRead", 2, net_httpRead),
         MBJS_CFUNC_DEF("httpWrite", 2, net_httpWrite),
         MBJS_CFUNC_DEF("httpClose", 1, net_httpClose),
+        MBJS_CFUNC_DEF("tcpConnect", 2, net_tcpConnect),
     };
-    return rt.SetModuleExportList(ctx, m, tab, 5);
+    return rt.SetModuleExportList(ctx, m, tab, 6);
 }
 
 MBJS_MODULE_EXTERN MBJSModuleDef *mbjs_init_module(MBJSContext *ctx,
@@ -214,6 +300,7 @@ MBJS_MODULE_EXTERN MBJSModuleDef *mbjs_init_module(MBJSContext *ctx,
         MBJS_CFUNC_DEF("httpRead", 2, net_httpRead),
         MBJS_CFUNC_DEF("httpWrite", 2, net_httpWrite),
         MBJS_CFUNC_DEF("httpClose", 1, net_httpClose),
+        MBJS_CFUNC_DEF("tcpConnect", 2, net_tcpConnect),
     };
     const char *missing = mbjs_runtime_resolve(&rt);
     MBJSModuleDef *m;
@@ -223,7 +310,7 @@ MBJS_MODULE_EXTERN MBJSModuleDef *mbjs_init_module(MBJSContext *ctx,
     m = rt.NewCModule(ctx, name ? name : "mochinode_net", net_mod_init);
     if (!m)
         return NULL;
-    if (rt.AddModuleExportList(ctx, m, tab, 5) != 0)
+    if (rt.AddModuleExportList(ctx, m, tab, 6) != 0)
         return NULL;
     return m;
 }

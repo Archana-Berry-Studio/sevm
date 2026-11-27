@@ -76,15 +76,16 @@
     },
     {
       "name": "mochinode_net",
-      "description": "Blocking TCP/HTTP server primitives over Winsock2 (httpServer/httpAccept/httpRead/httpWrite/httpClose)",
+      "description": "TCP/HTTP over Winsock2: server (httpServer/httpAccept/httpRead/httpWrite/httpClose) + client tcpConnect (non-blocking connect + 5s select)",
       "exports": [
         "httpAccept",
         "httpClose",
         "httpRead",
         "httpServer",
-        "httpWrite"
+        "httpWrite",
+        "tcpConnect"
       ],
-      "status": "operational",
+      "status": "verified",
       "path": "mochi_modules/mochinode_net"
     },
     {

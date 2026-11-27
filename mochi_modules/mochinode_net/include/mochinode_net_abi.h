@@ -11,6 +11,7 @@ extern "C" {
 /*   - httpRead */
 /*   - httpServer */
 /*   - httpWrite */
+/*   - tcpConnect */
 #ifdef __cplusplus
 }
 #endif

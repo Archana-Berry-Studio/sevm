@@ -47,9 +47,9 @@
       "id": "net-connect",
       "module": "mochinet",
       "layer": "node_modules",
-      "status": "todo",
+      "status": "done",
       "priority": "high",
-      "note": "Socket.connect and createServer still unsupported in JS; needs a client connect export in mochinode_net (server-side httpServer exists)."
+      "note": "MEASURED 2026-11-27: mochinode_net gains tcpConnect(host,port) native export (non-blocking connect + 5s select, Winsock2; ws2_32 linked). mochinet Socket.connect/createConnection now opens a real TCP socket (connect/write/end + cooperative 10ms 'data' poll loop). selftest/mochi-net-connect.js NET_CONNECT_ALL_OK — raw HTTP GET returned 'HTTP/1.0 200 OK'. mochinode_net export count 6 (AddModuleExportList count must match the table size or the module fails to init with [uninitialized])."
     },
     {
       "id": "tls-connect",
