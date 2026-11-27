@@ -21,6 +21,10 @@ Thumbs.db
 # Ad-hoc probes and bisect harnesses (never deliverables)
 scratch/
 
+# python bytecode
+__pycache__/
+*.pyc
+
 # engine build output (not source)
 build_ex/
 .modrepos/
