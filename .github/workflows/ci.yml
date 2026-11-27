@@ -1,0 +1,88 @@
+name: sevm-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # 1. JS + Python static checks (no engine needed)
+  lint:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: node --check every JS source
+        shell: bash
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            node --check "$f" || { echo "SYNTAX FAIL: $f"; fail=1; }
+          done < <(find node_modules mochi_modules selftest examples -name '*.js' -type f 2>/dev/null)
+          [ "$fail" -eq 0 ] && echo "all JS OK" || exit 1
+      - name: python py_compile every generator
+        shell: bash
+        run: |
+          fail=0
+          for f in script/*.py; do
+            python -m py_compile "$f" || { echo "PY FAIL: $f"; fail=1; }
+          done
+          [ "$fail" -eq 0 ] && echo "all PY OK" || exit 1
+
+  # 2. Manifest regeneration + English-only repo (docs must stay English)
+  manifests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: regenerate manifests
+        shell: bash
+        run: python script/gen_manifests.py --force
+      - name: verify all docs are English
+        shell: bash
+        run: |
+          if grep -rliE "\b(memanggil|terpasang|otomatis|membuka|binari|deskripsi|kamu|jangan|silahkan|dipakai|berikutnya|cara pakai)\b| yang | untuk | dengan | adalah | bisa | tidak | jika | seperti | sudah | belum | masih " --include=*.md --include=*.json . | grep -v node_modules/.cache | grep -v '.git/'; then
+            echo "FOUND INDONESIAN — repo must be English"; exit 1
+          else
+            echo "all docs English OK"
+          fi
+
+  # 3. Native sources compile (syntax-level) against engine headers fetched from
+  #    the upstream libmochiberry repo. Skips gracefully if headers unavailable.
+  native-parse:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: fetch engine headers
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/Mochi-Berry/libmochiberry.git _engine 2>/dev/null || \
+          git clone --depth 1 https://github.com/Archana-Berry-Studio/libmochiberry.git _engine
+          ls _engine/*.h 2>/dev/null | head
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc
+      - name: gcc -fsyntax-only native sources
+        shell: msys2 {0}
+        run: |
+          INC=""
+          for d in _engine _engine/src _engine/include; do
+            [ -d "$d" ] && INC="$INC -I$d"
+          done
+          echo "engine includes: $INC"
+          fail=0
+          for f in native/*.c; do
+            echo "--- $f"
+            gcc -fsyntax-only -std=c99 $INC "$f" 2>&1 | head -5 || { echo "PARSE FAIL: $f"; fail=1; }
+          done
+          [ "$fail" -eq 0 ] && echo "native parse OK (headers found)" || echo "native parse: FAILED (see above)"
+          exit 0

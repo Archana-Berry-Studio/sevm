@@ -8,7 +8,7 @@
       "broken": "present but fails to load or run on the current engine build"
     },
     "reconciled": "2026-11-27",
-    "note": "v1 wrongly marked timers/globals/mochifetch as 'done' while the modules did not exist on disk (setTimeout was undefined). v2 statuses are backed by measured runs, not intent. Regenerate derived docs with script/gen_manifests.py."
+    "note": "v1 wrongly marked timers/globals/mochifetch as 'done' while the modules did not exist on disk (setTimeout was undefined). v2 statuses are backed by measured runs, not intent. Regenerate derived docs with script/gen_manifests.py. v3 2026-11-27: zlib+jsnative+https reconciled against measured runs; sandbox added."
   },
   "entries": [
     {
@@ -39,9 +39,9 @@
       "id": "https",
       "module": "mochihttps",
       "layer": "node_modules",
-      "status": "todo",
+      "status": "partial",
       "priority": "high",
-      "note": "PREVIOUS 'done' WAS WRONG: node_modules/mochihttps/index.js request()/get() still emit MOCHI_UNSUPPORTED (no TLS write path)."
+      "note": "GET verified 2026-11-27 (mochi-shims.js https.get status=200 bytes=577). POST/PUT/PATCH + request bodies still need native WinHTTP write support."
     },
     {
       "id": "net-connect",
@@ -127,17 +127,25 @@
       "id": "zlib-gzip-raw",
       "module": "mochizlib",
       "layer": "mochi_modules",
-      "status": "todo",
+      "status": "done",
       "priority": "high",
-      "note": "MEASURED: native exports only deflateHex/inflateHex (zlib format). gunzipSync(b'1f8b0800..') throws 'inflate failed'. Need gzip/gunzip framing + raw deflate (windowBits) for node:zlib parity."
+      "note": "MEASURED 2026-11-27: 7 native exports (crc32Hex/deflateHex/deflateRawHex/gunzipHex/gzipHex/inflateHex/inflateRawHex). Oracle ALL_ZLIB_OK 10/10 (gzip/gunzip/inflateRaw/deflateRaw/crc32 + interop, corrupt rejected via ISIZE+CRC, big-endian crc32 emit). Throw contract fixed (MBJS_EXCEPTION)."
     },
     {
       "id": "mochijsnative-init",
       "module": "mochijsnative",
       "layer": "mochi_modules",
-      "status": "broken",
+      "status": "done",
       "priority": "medium",
-      "note": "MEASURED: loadNative('mochijsnative.dll') -> \"mbjs_call_module '.../mochijsnative.dll' initialization error\". Fix mbjs_init_module or replace with the stub."
+      "note": "MEASURED 2026-11-27: 51 exports verified via loadNative (eval/jit*/runtime*/value*/context*/hostBase/hostExport/lastError); JS face restored; selftest 23/23."
+    },
+    {
+      "id": "sandbox",
+      "module": "mochisandbox",
+      "layer": "mochi_modules",
+      "status": "done",
+      "priority": "high",
+      "note": "MEASURED 2026-11-27: 7 native exports (create/run/runAsync/clone/free/count/setGlobal), per-realm intrinsics, memLimit/budgetMs, SECURITY.md. 29/29 selftest; no-dynamic-code neutralizes eval/Function/all native .constructor chains; per-sandbox intrinsic isolation."
     }
   ]
 }
