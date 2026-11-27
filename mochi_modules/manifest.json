@@ -140,15 +140,16 @@
     },
     {
       "name": "mochiws",
-      "description": "WebSocket client + WinHTTP GET (connect/poll/send/close/httpGet)",
+      "description": "WebSocket client + WinHTTP GET/POST (connect/poll/send/close/httpGet/httpRequest)",
       "exports": [
         "close",
         "connect",
         "httpGet",
+        "httpRequest",
         "poll",
         "send"
       ],
-      "status": "operational",
+      "status": "verified",
       "path": "mochi_modules/mochiws"
     },
     {

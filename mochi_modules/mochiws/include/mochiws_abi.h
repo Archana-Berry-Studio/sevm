@@ -9,6 +9,7 @@ extern "C" {
 /*   - close */
 /*   - connect */
 /*   - httpGet */
+/*   - httpRequest */
 /*   - poll */
 /*   - send */
 #ifdef __cplusplus

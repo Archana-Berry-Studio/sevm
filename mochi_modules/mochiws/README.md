@@ -1,9 +1,9 @@
 # mochi_modules/mochiws
 
-WebSocket client + WinHTTP GET (connect/poll/send/close/httpGet)
+WebSocket client + WinHTTP GET/POST (connect/poll/send/close/httpGet/httpRequest)
 
 - **Orientation**: native-first (engine plugin, loaded by the engine)
-- **Status**: operational — implemented, integration/network dependent
+- **Status**: verified — exercised against mbjs.exe
 - **Entry point**: `mbjs_init_module(ctx, name)`
 
 ## Layout
@@ -24,6 +24,7 @@ mochi_modules/mochiws/
 - `close`
 - `connect`
 - `httpGet`
+- `httpRequest`
 - `poll`
 - `send`
 ```

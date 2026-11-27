@@ -2,13 +2,14 @@
   "name": "mochiws",
   "version": "0.1.0",
   "type": "native-engine-plugin",
-  "description": "WebSocket client + WinHTTP GET (connect/poll/send/close/httpGet)",
-  "status": "operational",
+  "description": "WebSocket client + WinHTTP GET/POST (connect/poll/send/close/httpGet/httpRequest)",
+  "status": "verified",
   "entry_point": "mbjs_init_module",
   "runtime_exports": [
     "close",
     "connect",
     "httpGet",
+    "httpRequest",
     "poll",
     "send"
   ],

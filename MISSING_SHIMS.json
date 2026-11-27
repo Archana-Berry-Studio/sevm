@@ -63,9 +63,9 @@
       "id": "http-methods",
       "module": "mochihttp",
       "layer": "node_modules",
-      "status": "todo",
+      "status": "done",
       "priority": "high",
-      "note": "Only GET is reachable (mochiws.httpGet). POST/PUT/PATCH + request bodies need native WinHTTP write support."
+      "note": "MEASURED 2026-11-27: mochiws.httpRequest(method,url,body,contentType) native (WinHTTP SendRequest with body) + mochihttp.ClientRequest.end(body) wires POST/PUT/PATCH/DELETE. selftest/mochi-http-post.js HTTP_REQUEST 6/6 ALL_OK (POST/PUT/PATCH 201, body echoed). mochihttps inherits via re-export."
     },
     {
       "id": "http-server",

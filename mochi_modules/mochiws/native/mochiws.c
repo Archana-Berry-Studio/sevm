@@ -663,6 +663,161 @@ http_done:
 #undef HTTP_FAIL
 }
 
+/* httpRequest(method, url, body?, contentType?) -> JSON
+ * Like httpGet but method- and body-aware (POST/PUT/PATCH/DELETE + payload).
+ * Returns the same {"status":..,"ok":..,"stage":"ok","headers":{},"bodyHex":".."}.
+ */
+static MBJSValue ws_http_request(MBJSContext *ctx, MBJSValueConst this_val,
+                                 int argc, MBJSValueConst *argv)
+{
+    (void)this_val;
+    if (argc < 2) return js_error(ctx, "httpRequest needs method,url");
+    size_t methLen = 0;
+    char *meth = js_cstr_len(ctx, argv[0], &methLen);
+    if (!meth || methLen == 0) { free(meth); return js_error(ctx, "httpRequest bad method"); }
+    int wmLen = MultiByteToWideChar(CP_UTF8, 0, meth, -1, NULL, 0);
+    WCHAR *wmethod = wmLen > 0 ? (WCHAR *)malloc((size_t)wmLen * sizeof(WCHAR)) : NULL;
+    if (!wmethod) { free(meth); return js_error(ctx, "httpRequest method conv failed"); }
+    MultiByteToWideChar(CP_UTF8, 0, meth, -1, wmethod, wmLen);
+    free(meth);
+
+    size_t urlLen = 0;
+    char *url = js_cstr_len(ctx, argv[1], &urlLen);
+    if (!url || urlLen == 0) { free(wmethod); return js_error(ctx, "httpRequest needs url"); }
+
+    /* optional body + content-type */
+    const char *body = NULL;
+    size_t bodyLen = 0;
+    char *bodyOwned = NULL;
+    char *ctOwned = NULL;
+    const char *ct = NULL;
+    if (argc >= 3 && !MBJS_IsUndefined(argv[2]) && !MBJS_IsNull(argv[2])) {
+        bodyOwned = js_cstr_len(ctx, argv[2], &bodyLen);
+        body = bodyOwned;
+    }
+    if (argc >= 4 && !MBJS_IsUndefined(argv[3]) && !MBJS_IsNull(argv[3])) {
+        size_t ctLen = 0;
+        ctOwned = js_cstr_len(ctx, argv[3], &ctLen);
+        ct = ctOwned;
+    }
+
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, url, -1, NULL, 0);
+    WCHAR *wurl = wlen > 0 ? (WCHAR *)malloc((size_t)wlen * sizeof(WCHAR)) : NULL;
+    if (!wurl) { free(url); free(wmethod); free(bodyOwned); free(ctOwned); return js_error(ctx, "httpRequest url conv failed"); }
+    MultiByteToWideChar(CP_UTF8, 0, url, -1, wurl, wlen);
+    free(url);
+
+    WCHAR scheme[32], host[512], path[8192], extra[1024];
+    URL_COMPONENTSW uc;
+    memset(&uc, 0, sizeof(uc));
+    uc.dwStructSize = sizeof(uc);
+    uc.lpszScheme = scheme; uc.dwSchemeLength = 32;
+    uc.lpszHostName = host; uc.dwHostNameLength = 512;
+    uc.lpszUrlPath = path; uc.dwUrlPathLength = 8192;
+    uc.lpszExtraInfo = extra; uc.dwExtraInfoLength = 1024;
+    scheme[0] = host[0] = path[0] = extra[0] = 0;
+    if (!WinHttpCrackUrl(wurl, 0, 0, &uc) || !host[0]) {
+        free(wurl); free(wmethod); free(bodyOwned); free(ctOwned);
+        return js_error(ctx, "httpRequest bad url");
+    }
+    free(wurl);
+
+    BOOL secure = uc.nScheme == INTERNET_SCHEME_HTTPS;
+    INTERNET_PORT port = uc.nPort ? uc.nPort : (secure ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT);
+    HINTERNET session = WinHttpOpen(L"MochiWA/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                    WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    HINTERNET connect = NULL, request = NULL;
+    unsigned char *rbody = NULL;
+    char *json = NULL;
+    MBJSValue ret = MBJS_UNDEFINED;
+    size_t rbodyLen = 0, rbodyCap = 0;
+    DWORD status = 0;
+    const char *stage = "open";
+    DWORD errCode = 0;
+#define HTTP_FAIL2(label) do { stage = (label); errCode = GetLastError(); goto http_done2; } while (0)
+
+    if (!session) HTTP_FAIL2("open");
+    WinHttpSetTimeouts(session, 10000, 10000, 20000, 30000);
+    connect = WinHttpConnect(session, host, port, 0);
+    if (!connect) HTTP_FAIL2("connect");
+    request = WinHttpOpenRequest(connect, wmethod, path[0] ? path : L"/", NULL,
+                                 WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                 secure ? WINHTTP_FLAG_SECURE : 0);
+    if (!request) HTTP_FAIL2("open_request");
+
+    /* send headers + optional body */
+    LPCWSTR hdrs = WINHTTP_NO_ADDITIONAL_HEADERS;
+    DWORD hdrsLen = 0;
+    WCHAR ctWide[128];
+    if (ct && body) {
+        MultiByteToWideChar(CP_UTF8, 0, ct, -1, ctWide, 128);
+        ctWide[127] = 0;
+        hdrs = ctWide;
+        hdrsLen = (DWORD)wcslen(ctWide);
+    }
+    if (!WinHttpSendRequest(request, hdrs, hdrsLen,
+                            body ? (LPVOID)body : WINHTTP_NO_REQUEST_DATA,
+                            body ? (DWORD)bodyLen : 0,
+                            body ? (DWORD)bodyLen : 0, 0)) HTTP_FAIL2("send");
+    if (!WinHttpReceiveResponse(request, NULL)) HTTP_FAIL2("receive");
+
+    DWORD statusSize = sizeof(status);
+    WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                        WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX);
+
+    rbodyCap = 4096;
+    rbody = (unsigned char *)malloc(rbodyCap);
+    if (!rbody) HTTP_FAIL2("alloc_body");
+    for (;;) {
+        DWORD avail = 0;
+        if (!WinHttpQueryDataAvailable(request, &avail) || avail == 0) break;
+        if (rbodyLen + avail + 1 > rbodyCap) {
+            while (rbodyLen + avail + 1 > rbodyCap) rbodyCap *= 2;
+            unsigned char *tmp = (unsigned char *)realloc(rbody, rbodyCap);
+            if (!tmp) HTTP_FAIL2("grow_body");
+            rbody = tmp;
+        }
+        DWORD got = 0;
+        if (!WinHttpReadData(request, rbody + rbodyLen, avail, &got) || got == 0) break;
+        rbodyLen += got;
+    }
+    rbody[rbodyLen] = 0;
+
+    size_t jsonCap = rbodyLen * 2 + 256;
+    json = (char *)malloc(jsonCap);
+    if (!json) HTTP_FAIL2("alloc_json");
+    int n = snprintf(json, jsonCap,
+                     "{\"status\":%lu,\"ok\":%s,\"stage\":\"ok\",\"error\":0,\"headers\":{},\"bodyHex\":\"",
+                     (unsigned long)status, (status >= 200 && status < 300) ? "true" : "false");
+    for (size_t i = 0; i < rbodyLen && n > 0; i++) {
+        n += snprintf(json + n, jsonCap - (size_t)n, "%02x", rbody[i]);
+    }
+    if (n > 0) {
+        int tail = snprintf(json + n, jsonCap - (size_t)n, "\"}");
+        if (tail > 0) n += tail;
+    }
+    ret = js_str(ctx, json, (size_t)n);
+
+http_done2:
+    if (request) WinHttpCloseHandle(request);
+    if (connect) WinHttpCloseHandle(connect);
+    if (session) WinHttpCloseHandle(session);
+    free(rbody);
+    free(json);
+    free(wmethod);
+    free(bodyOwned);
+    free(ctOwned);
+    if (MBJS_IsUndefined(ret)) {
+        char message[128];
+        snprintf(message, sizeof(message), "httpRequest failed at %s (%lu)", stage, (unsigned long)errCode);
+        fprintf(stderr, "[mochiws-http] %s host=%ls path=%ls port=%u secure=%d\n",
+                message, host, path[0] ? path : L"/", (unsigned)port, (int)secure);
+        return js_error(ctx, message);
+    }
+    return ret;
+#undef HTTP_FAIL2
+}
+
 static int ws_mod_init(MBJSContext *ctx, MBJSModuleDef *m)
 {
     const MBJSCFunctionListEntry tab[] = {
@@ -671,6 +826,7 @@ static int ws_mod_init(MBJSContext *ctx, MBJSModuleDef *m)
         MBJS_CFUNC_DEF("poll", 1, ws_poll),
         MBJS_CFUNC_DEF("close", 1, ws_close),
         MBJS_CFUNC_DEF("httpGet", 1, ws_http_get),
+        MBJS_CFUNC_DEF("httpRequest", 4, ws_http_request),
     };
     return rt.SetModuleExportList(ctx, m, tab, (int)(sizeof(tab) / sizeof(tab[0])));
 }
@@ -683,6 +839,7 @@ MBJS_MODULE_EXTERN MBJSModuleDef *mbjs_init_module(MBJSContext *ctx, const char 
         MBJS_CFUNC_DEF("poll", 1, ws_poll),
         MBJS_CFUNC_DEF("close", 1, ws_close),
         MBJS_CFUNC_DEF("httpGet", 1, ws_http_get),
+        MBJS_CFUNC_DEF("httpRequest", 4, ws_http_request),
     };
     const char *missing = mbjs_runtime_resolve(&rt);
     MBJSModuleDef *m;
