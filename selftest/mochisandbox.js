@@ -94,6 +94,71 @@ async function main() {
     check('rejected promise throws', rejected);
     sb4.free();
 
+
+    /* clone: JSON deep-copy host value into the realm (globalThis.__clone__) */
+    const sb6 = sandbox({ budgetMs: 5000 });
+    const srcObj = { a: 1, b: [1, 2, 3], s: 'x', nested: { deep: [10, 20] } };
+    const cpObj = sb6.clone(srcObj);
+    check('clone returns deep copy', JSON.stringify(cpObj) === JSON.stringify(srcObj));
+    check('clone realm __clone__ matches', sb6.eval('JSON.stringify(__clone__)') === JSON.stringify(srcObj));
+    srcObj.b[1] = 999;                     /* host mutation must NOT touch realm copy */
+    check('clone is deep (host mutation isolated)', sb6.eval('__clone__.b[1]') === 2);
+    check('clone nested path in realm', sb6.clone({ nested: { deep: [10, 20] } }).nested.deep[1] === 20);
+    check('clone realm __clone__ holds nested', sb6.eval('__clone__.nested.deep[1]') === 20);
+    check('clone string', sb6.clone('deep') === 'deep');
+    check('clone null', sb6.clone(null) === null);
+    let cloneCyclic = false;
+    const cyc = {}; cyc.self = cyc;
+    try { sb6.clone(cyc); } catch (e) { cloneCyclic = true; }   /* JSON.stringify throws host-side */
+    check('clone cyclic host value throws (no hang)', cloneCyclic);
+    sb6.free();
+
+    /* audit: every native intrinsic's .constructor chain is neutered */
+    const sb7 = sandbox({ budgetMs: 5000, strict: true });
+    const ctorChain = [
+        'RegExp.constructor("return 40+2")()',
+        '/x/.constructor.constructor("return 40+2")()',
+        'Object.constructor("return 40+2")()',
+        'Array.constructor("return 40+2")()',
+        'Date.constructor("return 40+2")()',
+        'JSON.constructor("return 40+2")()',
+        'Promise.constructor("return 40+2")()',
+        'Error.constructor("return 40+2")()',
+        'String.constructor("return 40+2")()',
+        'Number.constructor("return 40+2")()',
+        'Boolean.constructor("return 40+2")()',
+        'ArrayBuffer.constructor("return 40+2")()',
+        'Object.getPrototypeOf({}).constructor("return 40+2")()',
+        'new Proxy({},{get:(t,k)=>Function(k)}).x',
+        '(Object.defineProperty(Object,"constructor",{value:Function}), Object.constructor("return 1")())',
+    ];
+    let allDenied = true;
+    for (const expr of ctorChain) {
+        if (!denies('mochisandbox: dynamic code disabled', () => sb7.eval(expr))) { allDenied = false; console.log('  NOT DENIED: ' + expr); }
+    }
+    check('audit: all native .constructor chains + Proxy->Function denied', allDenied);
+    check('audit: RegExp still works (non-code)', sb7.eval('new RegExp("a.c").test("abc")') === true);
+    check('audit: RegExp is not a Function compiler', sb7.eval('typeof Object.getPrototypeOf(/x/).constructor("return 1")') === 'object');
+    check('audit: Error.prepareStackTrace stays realm-local', sb7.eval('(Error.prepareStackTrace=(e,s)=>42, new Error("x").stack)') === 42);
+    check('audit: Symbol.toPrimitive coercion ok', sb7.eval('({[Symbol.toPrimitive]:()=>7}*1)') === 7);
+    check('audit: Proxy get trap ok', sb7.eval('new Proxy({a:1},{get:(t,k)=>k==="a"?42:t[k]}).a') === 42);
+    check('audit: BigInt computes in-realm (non-JSON result)', sb7.eval('String(BigInt(2)+BigInt(3))') === '5');
+    check('audit: Symbol present', sb7.eval('typeof Symbol.iterator') === 'symbol');
+    check('audit: ArrayBuffer + view ok', sb7.eval('new Uint8Array(new ArrayBuffer(4)).length') === 4);
+    check('audit: dynalib absent', sb7.eval('typeof dynalib') === 'undefined');
+    check('audit: WebAssembly absent', sb7.eval('typeof WebAssembly') === 'undefined');
+    sb7.free();
+
+    /* audit: intrinsics are isolated PER SANDBOX (not just globals) */
+    const sb9 = sandbox({ budgetMs: 5000, strict: true });
+    const sb10 = sandbox({ budgetMs: 5000, strict: true });
+    sb9.eval('(Object.defineProperty(Array.prototype, "0", {value: 99, writable: false, configurable: true}), 1)');
+    check('audit: poisoned prototype applies within the sandbox',
+          denies('read-only', () => sb9.eval('new Array(1,2)[0]')));
+    check('audit: fresh sandbox is NOT affected by another sandbox prototype',
+          sb10.eval('[1,2,3].join(",")') === '1,2,3');
+    sb9.free(); sb10.free();
+
     /* free + lifecycle */
     check('count reports live sandboxes', typeof count() === 'number');
     sb.free();

@@ -432,6 +432,80 @@ static MBJSValue sbox_run(MBJSContext *ctx, MBJSValueConst this_val,
     }
 }
 
+
+/* clone(id, jsonText): deep-copy a host JSON value into the sandbox realm.
+   Parses the JSON text inside the realm, stores the result at
+   globalThis.__clone__, and returns the JSON-serialized copy (so the host
+   can verify the deep copy). Sandbox code reaches the copy via __clone__. */
+static MBJSValue sbox_clone(MBJSContext *ctx, MBJSValueConst this_val,
+                            int argc, MBJSValueConst *argv)
+{
+    Sandbox *sb;
+    char *idstr = NULL, *jsonText = NULL;
+    char *lit = NULL, *expr = NULL;
+    size_t litlen, exprlen;
+    MBJSValue res;
+    char *outjson = NULL;
+    MBJSValue out;
+
+    (void)this_val;
+    if (argc < 2) return host_error(ctx, "clone(id, jsonText)");
+    idstr = host_cstr(ctx, argv[0], NULL);
+    jsonText = host_cstr(ctx, argv[1], NULL);
+    if (!idstr || !jsonText) { free(idstr); free(jsonText); return host_error(ctx, "arg parse"); }
+    sb = find_sbox((uint64_t)strtoull(idstr, NULL, 10));
+    if (!sb || !sb->alive) {
+        free(idstr); free(jsonText);
+        return host_error(ctx, "unknown sandbox id");
+    }
+    /* JSON text must become a JS string literal so JSON.parse sees it verbatim. */
+    litlen = strlen(jsonText) * 2 + 3;               /* worst case: every byte escaped */
+    lit = (char *)malloc(litlen);
+    if (!lit) { free(idstr); free(jsonText); return host_error(ctx, "oom"); }
+    {
+        size_t j = 0;
+        const char *p;
+        lit[j++] = '"';
+        for (p = jsonText; *p; p++) {
+            unsigned char c = (unsigned char)*p;
+            switch (c) {
+                case '"':  lit[j++] = '\\'; lit[j++] = '"';  break;
+                case '\\': lit[j++] = '\\'; lit[j++] = '\\'; break;
+                case '\n': lit[j++] = '\\'; lit[j++] = 'n';  break;
+                case '\r': lit[j++] = '\\'; lit[j++] = 'r';  break;
+                case '\t': lit[j++] = '\\'; lit[j++] = 't';  break;
+                default:
+                    if (c < 0x20) { j += (size_t)snprintf(lit + j, litlen - j, "\\u%04x", c); }
+                    else lit[j++] = (char)c;
+            }
+        }
+        lit[j++] = '"';
+        lit[j] = '\0';
+    }
+    free(idstr); free(jsonText);
+    /* (globalThis.__clone__ = JSON.parse(<lit>)); -> completion value is the copy */
+    exprlen = strlen(lit) + 64;
+    expr = (char *)malloc(exprlen);
+    if (!expr) { free(lit); return host_error(ctx, "oom"); }
+    snprintf(expr, exprlen, "(globalThis.__clone__ = JSON.parse(%s));", lit);
+    free(lit);
+
+    res = sbox_eval(sb, expr, strlen(expr), "<sbox-clone>", 0);
+    free(expr);
+    if (MBJS_IsException(res)) {
+        char *msg = sbox_exc_message(sb);
+        sx.FreeValue(sb->ctx2, res);
+        if (msg) { MBJSValue e = host_error(ctx, msg); free(msg); return e; }
+        return host_error(ctx, "clone: JSON.parse failed in sandbox");
+    }
+    outjson = sbox_json(sb, res);
+    sx.FreeValue(sb->ctx2, res);
+    if (!outjson) return host_error(ctx, "clone: serialization failed");
+    out = host_str(ctx, outjson, strlen(outjson));
+    free(outjson);
+    return out;
+}
+
 /* convert any sandbox value to a malloc'd C string (borrowed-pointer safe) */
 static char *sbox_value_str(Sandbox *sb, MBJSValueConst v)
 {
@@ -583,6 +657,7 @@ static MBJSValue sbox_count(MBJSContext *ctx, MBJSValueConst this_val,
 static const MBJSCFunctionListEntry sbox_tab[] = {
     MBJS_CFUNC_DEF("create", 1, sbox_create),
     MBJS_CFUNC_DEF("setGlobal", 3, sbox_setGlobal),
+    MBJS_CFUNC_DEF("clone", 2, sbox_clone),
     MBJS_CFUNC_DEF("run", 2, sbox_run),
     MBJS_CFUNC_DEF("runAsync", 2, sbox_runAsync),
     MBJS_CFUNC_DEF("free", 1, sbox_free),

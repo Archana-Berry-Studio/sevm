@@ -41,6 +41,11 @@ export class Sandbox {
   setRawGlobal(name, lit) {
     this._m.setGlobal(this._id, jstr(name), String(lit));
   }
+  /* clone: JSON deep-copy a host value into the realm as globalThis.__clone__;
+     returns the host-side copy (the realm holds its OWN copy, not a reference). */
+  clone(value) {
+    return JSON.parse(this._m.clone(this._id, JSON.stringify(value)));
+  }
   run(source) {
     return this._m.run(this._id, String(source));
   }

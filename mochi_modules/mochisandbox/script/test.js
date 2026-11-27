@@ -59,7 +59,14 @@ async function main() {
   check('strict denies constructor chain', denied);
   sb3.free();
 
-  /* 7. free + count (no crash) */
+  /* 7. clone: JSON deep-copy into the realm (globalThis.__clone__) */
+  const cp = sb.clone({ a: [1, 2, 3], s: 'x' });
+  check('clone deep copy', JSON.stringify(cp) === '{"a":[1,2,3],"s":"x"}');
+  check('clone realm __clone__', sb.run('__clone__.a[1]') === '2');
+  const cpStr = sb.clone('deep');
+  check('clone string', cpStr === 'deep');
+
+  /* 8. free + count (no crash) */
   sb.free();
   check('free (no crash)', true);
 

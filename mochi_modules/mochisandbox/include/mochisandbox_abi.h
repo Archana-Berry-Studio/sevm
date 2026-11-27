@@ -20,3 +20,5 @@ extern "C" {
 }
 #endif
 #endif
+
+/* clone(id, jsonText): deep-copy a host JSON value into the realm (globalThis.__clone__), return the serialized copy */

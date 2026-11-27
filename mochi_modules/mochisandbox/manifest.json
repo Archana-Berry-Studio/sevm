@@ -13,6 +13,7 @@
   "exports": [
     "create",
     "setGlobal",
+    "clone",
     "run",
     "runAsync",
     "free",

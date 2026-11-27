@@ -100,6 +100,54 @@ karena host tidak pernah menyerahkan nilai by-reference ke realm.
    jatahnya lalu tetap hidup, tetapi alokasi berikutnya akan OOM hingga runtime
    baru dibuat.
 
+
+## Hasil audit lanjutan (2026-11-27) — constructor chains, clone, isolasi intrinsik
+
+Ditambahkan bersama `clone(id, jsonText)` (deep-copy JSON host → realm,
+tersimpan di `globalThis.__clone__`). Semua terukur pada `mbjs.exe` 7.329.331 B,
+JS-first selftest 50/50, native 14/14:
+
+1. **Rantai `.constructor` intrinsik — DITUTUP.** Untuk SETIAP intrinsik native
+   (`RegExp`, `Object`, `Array`, `Date`, `JSON`, `Promise`, `Error`, `String`,
+   `Number`, `Boolean`, `ArrayBuffer`, dan `Object.getPrototypeOf({}).constructor`),
+   `X.constructor('return 40+2')()` ditolak dengan
+   `mochisandbox: dynamic code disabled`. Ini menutup rute bypass yang lewat
+   `RegExp.constructor`/`/x/.constructor.constructor` (dulu tidak dinetralkan).
+2. **`Proxy` tidak bisa dipakai untuk kompilasi** — trap `get` yang memanggil
+   `Function(k)` ditolak; trap data biasa (`new Proxy({a:1},{get:...}).a`) tetap
+   jalan (nilai realm-eksternal saja).
+3. **`Object.defineProperty` tidak bisa menghidupkan kembali `Function`** —
+   `defineProperty(Object,'constructor',{value:Function})` tetap memunculkan
+   deny, karena `Function` global sendiri sudah diganti deny().
+4. **`Error.captureStackTrace` / `Error.prepareStackTrace`** tidak memberi
+   escape: `prepareStackTrace` mengembalikan nilai realm-eksternal (terukur 42),
+   tidak pernah menyediakan akses host atau kompilasi kode.
+5. **`Symbol.toPrimitive`, `Proxy` get, `Symbol`, `ArrayBuffer`/typed array**
+   berfungsi normal di realm tanpa escape. `BigInt` menghitung di realm tetapi
+   **tidak dapat diserialisasi JSON** (keterbatasan `sbox_json`, bukan celah
+   keamanan).
+6. **Isolasi intrinsik PER-SANDBOX (bukan hanya global).** Mencemari
+   `Array.prototype[0]` (read-only, value 99) di sandbox A:
+   - di A: `new Array(1,2)[0]` → `TypeError: '0' is read-only` (racun berlaku),
+   - di B (sandbox baru): `[1,2,3].join(',')` → `'1,2,3'` (TIDAK terpengaruh),
+   - host: `[1,2,3]` → `[1,2,3]` (TIDAK terpengaruh).
+   Setiap `MBJS_NewRuntime()+NewContext()` membawa intrinsik sendiri; racun
+   intrinsik tidak menembus sandbox lain maupun host.
+7. **Quirk engine (bukan celah):** array-literal `[1,2]` memakai fast-path yang
+   melewati cek `[[Set]]` prototipe — jadi `[1,2][0]` tetap `1` meski
+   `Array.prototype[0]` dijadikan non-writable; `new Array(1,2)[0]` justru
+   melempar `TypeError`. Untuk mendeteksi racun prototipe, vektor yang benar
+   adalah path konstruktor.
+
+## clone(id, jsonText)
+```js
+sb.clone({ a: [1,2,3], s: 'x' });   // -> deep copy (host side)
+sb.eval('__clone__.a[1]');          // -> 2  (realm side, copy asli)
+```
+`JSON.stringify` + `JSON.parse` di sisi realm — host object TIDAK direferensikan
+(terukur: memutasi objek host setelah `clone` tidak mengubah salinan realm).
+Objek siklik → `JSON.stringify` melempar di sisi host (tidak menggantung).
+
 ## Cara memakai
 ```js
 const { sandbox } = await import('mochisandbox');
