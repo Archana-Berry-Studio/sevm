@@ -117,3 +117,35 @@ E:/bcf/mochiberry/build_manual/mbjs.exe -m selftest/mochi-shims.js
   heavy C99 part.
 - `node_modules` pure JS: lightweight utilities that touch no OS and are not a
   bottleneck.
+
+## 8. Engine quirks learned the hard way (do not rediscover these)
+
+Every entry here was verified by measurement under the real engine, not read
+from docs. Extend this section after every hard-won discovery.
+
+- A C function that throws MUST return `MBJS_EXCEPTION`, never
+  `MBJS_UNDEFINED` (pending exception + teardown crash otherwise).
+- `AddModuleExportList`/`SetModuleExportList` count MUST equal the table
+  length. Derive it: `#define N_EXPORTS ((int)(sizeof(g_tab)/sizeof(g_tab[0])))`
+  so the count cannot drift.
+- Plugins must not import `mbjs.exe` (Windows loader error 126). Resolve
+  engine symbols through `native/mbjs_runtime.h`.
+- A module that fails to init reports `[uninitialized]` — check for that
+  string, not just a missing exception.
+- `os.read(fd, buf, offset, count)` is arity-4 with a pre-allocated
+  ArrayBuffer. `os.read(fd, len)` returns nothing useful.
+- `os.getcwd()` returns `[path, errCode]` — use `os.getcwd()[0]`.
+- `await <already-resolved promise>` freezes: the engine drives microtasks
+  from the timer/IO turn loop. Schedule resolution with `os.setTimeout(0)`.
+- After creating a `Worker` the host process never exits on its own. Print
+  the verdict line, then let the harness apply a timeout.
+- Verify "portability" claims by reading the PE import table, not binary
+  strings. Strings are leftover debug paths; the import table tells you
+  whether a DLL is truly self-contained (statically linked VM).
+- Runtime is ESM: `require` does not exist. There is no `Buffer` and no
+  `TextDecoder` — decode bytes manually.
+- `IncomingMessage` events are not auto-pumped: iterate
+  `for await (const chunk of res)` instead of `res.on('data')`.
+- Selftest verdicts are printed tokens (`ALL_OK`, `<NAME>_ALL_OK`); the
+  harness greps for them and applies a timeout. A "measured limitation"
+  is documented in the selftest header, never hidden.
