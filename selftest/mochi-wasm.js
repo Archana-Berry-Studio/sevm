@@ -21,9 +21,10 @@ const bytes = ab;
 /* host import: wasi_snapshot_preview1.fd_write (func) */
 let hostCalled = false;
 let hostCalls = 0;
+const hostArgs = [];
 const imports = {
     wasi_snapshot_preview1: {
-        fd_write: (fdnum, iovs, iovsLen, nwrittenPtr) => { hostCalled = true; hostCalls++; return 0; },
+        fd_write: (fdnum, iovs, iovsLen, nwrittenPtr) => { hostCalled = true; hostCalls++; hostArgs.push([fdnum, iovs, iovsLen, nwrittenPtr]); return 0; },
     },
 };
 
@@ -72,14 +73,19 @@ const memBuf = inst.exports.memory.buffer;
 console.log('  memory buffer len=' + (memBuf && memBuf.byteLength));
 check('memory buffer is an ArrayBuffer', memBuf instanceof ArrayBuffer);
 
-/* register + invoke a host import the wasm actually calls (hello uses fd_write) */
+/* register + invoke a host import the wasm actually calls (hello -> fd_write) */
 try {
     const helloRes = inst.exports.hello();
     console.log('  hello() -> ' + JSON.stringify(helloRes));
 } catch (e) {
-    console.log('  hello() threw (may not call fd_write in this module): ' + (e && e.message));
+    console.log('  hello() threw: ' + (e && e.message));
 }
-check('host import registered (fd_write was callable)', hostCalls >= 0);
+console.log('  fd_write calls=' + hostCalls + ' args=' + JSON.stringify(hostArgs));
+/* hello() calls wasi_snapshot_preview1.fd_write(1, 16, 1, 24): fd=stdout,
+ * one iovec at offset 16, 1 iov, nwritten ptr at 24. This proves a wasm
+ * function really invokes a JS host import end-to-end. */
+check('host import invoked by wasm (fd_write called)', hostCalls === 1);
+check('fd_write arg fd === 1 (stdout)', hostArgs.length === 1 && hostArgs[0][0] === 1);
 
 console.log(failures === 0 ? '\nWASM_ALL_OK' : '\nWASM_FAILURES=' + failures);
 if (failures) throw new Error('wasm failures: ' + failures);
