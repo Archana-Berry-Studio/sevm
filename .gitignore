@@ -18,6 +18,9 @@ native/*.dll
 Thumbs.db
 .DS_Store
 
+# Ad-hoc probes and bisect harnesses (never deliverables)
+scratch/
+
 # engine build output (not source)
 build_ex/
 .modrepos/
