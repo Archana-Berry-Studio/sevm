@@ -25,7 +25,7 @@ NATIVE_MODS = ["mochizlib", "mochifs", "mochicrypto", "mochiws",
 # which node_modules dirs are real JS-first modules (skip pure-asset dirs)
 JS_MODS = ["mochinode", "mochibuffer", "mochipath", "mochistream", "mochiurl",
            "mochiutil", "mochios", "mochihttp", "mochihttps", "mochitls",
-           "mochievents", "mochiasync_hooks", "mochidiagnostics_channel",
+           "mochinet", "mochievents", "mochiasync_hooks", "mochidiagnostics_channel",
            "mochiperf_hooks", "mochimodule", "mochiprocess", "mochiglobals",
            "mochitimers", "mochifetch", "mochijsnative_stub",
            "dynalib", "events", "express", "fs", "net", "sqlite"]
