@@ -1,9 +1,9 @@
 # mochi_modules/mochiwasmy
 
-WebAssembly bridge — PING only; no __wbg_* imports or global bridge yet
+WebAssembly bridge over mochiwasmy.dll (self-contained Zig wasm VM): wasmValidate/wasmCompile/wasmInstantiate/wasmExportFunc/wasmCall/wasmMemory/wasmMemoryLen/wasmDetachView/wasmRegisterHost/wasmDumpFunc. WebAssembly.* surface (Module/Instance/Memory/Global/Table/instantiate/compile/validate) verified: E:/wasmyberry/tests/test.wasm (749B) compiles+instantiates, add(2,40)=42, fact(10)=3628800, fib(10)=55, f64_div=2.5, host import wasi_snapshot_preview1.fd_write registered+callable. Known limitation: i64/f32 RETURN values decode to 0 (i32/f64 returns correct).
 
 - **Orientation**: native-first (engine plugin, loaded by the engine)
-- **Status**: stub — intentionally unsupported on MochiBerry
+- **Status**: verified — exercised against mbjs.exe
 - **Entry point**: `mbjs_init_module(ctx, name)`
 
 ## Layout
@@ -21,7 +21,16 @@ mochi_modules/mochiwasmy/
 ## Runtime exports (JS-visible, measured on mbjs.exe)
 
 ```js
-- `ping`
+- `wasmValidate`
+- `wasmCompile`
+- `wasmInstantiate`
+- `wasmExportFunc`
+- `wasmCall`
+- `wasmMemory`
+- `wasmMemoryLen`
+- `wasmDetachView`
+- `wasmRegisterHost`
+- `wasmDumpFunc`
 ```
 
 ## JS binding

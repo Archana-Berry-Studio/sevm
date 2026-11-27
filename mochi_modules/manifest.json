@@ -2,7 +2,7 @@
   "name": "sevm-mochi-modules",
   "version": "0.1.0",
   "description": "Native engine plugins for MochiBerry (SEVM). Native-first: DLL/so/dylib.",
-  "generated": "2026-11-27",
+  "generated": "2026-11-28",
   "abi": {
     "entry_point": "mbjs_init_module",
     "engine_symbol_resolution": "native/mbjs_runtime.h (host image symbols)",
@@ -155,11 +155,20 @@
     },
     {
       "name": "mochiwasmy",
-      "description": "WebAssembly bridge — PING only; no __wbg_* imports or global bridge yet",
+      "description": "WebAssembly bridge over mochiwasmy.dll (self-contained Zig wasm VM): wasmValidate/wasmCompile/wasmInstantiate/wasmExportFunc/wasmCall/wasmMemory/wasmMemoryLen/wasmDetachView/wasmRegisterHost/wasmDumpFunc. WebAssembly.* surface (Module/Instance/Memory/Global/Table/instantiate/compile/validate) verified: E:/wasmyberry/tests/test.wasm (749B) compiles+instantiates, add(2,40)=42, fact(10)=3628800, fib(10)=55, f64_div=2.5, host import wasi_snapshot_preview1.fd_write registered+callable. Known limitation: i64/f32 RETURN values decode to 0 (i32/f64 returns correct).",
       "exports": [
-        "ping"
+        "wasmValidate",
+        "wasmCompile",
+        "wasmInstantiate",
+        "wasmExportFunc",
+        "wasmCall",
+        "wasmMemory",
+        "wasmMemoryLen",
+        "wasmDetachView",
+        "wasmRegisterHost",
+        "wasmDumpFunc"
       ],
-      "status": "stub",
+      "status": "verified",
       "path": "mochi_modules/mochiwasmy"
     },
     {

@@ -2,11 +2,20 @@
   "name": "mochiwasmy",
   "version": "0.1.0",
   "type": "native-engine-plugin",
-  "description": "WebAssembly bridge — PING only; no __wbg_* imports or global bridge yet",
-  "status": "stub",
+  "description": "WebAssembly bridge over mochiwasmy.dll (self-contained Zig wasm VM): wasmValidate/wasmCompile/wasmInstantiate/wasmExportFunc/wasmCall/wasmMemory/wasmMemoryLen/wasmDetachView/wasmRegisterHost/wasmDumpFunc. WebAssembly.* surface (Module/Instance/Memory/Global/Table/instantiate/compile/validate) verified: E:/wasmyberry/tests/test.wasm (749B) compiles+instantiates, add(2,40)=42, fact(10)=3628800, fib(10)=55, f64_div=2.5, host import wasi_snapshot_preview1.fd_write registered+callable. Known limitation: i64/f32 RETURN values decode to 0 (i32/f64 returns correct).",
+  "status": "verified",
   "entry_point": "mbjs_init_module",
   "runtime_exports": [
-    "ping"
+    "wasmValidate",
+    "wasmCompile",
+    "wasmInstantiate",
+    "wasmExportFunc",
+    "wasmCall",
+    "wasmMemory",
+    "wasmMemoryLen",
+    "wasmDetachView",
+    "wasmRegisterHost",
+    "wasmDumpFunc"
   ],
   "sources": [
     "native/mochiwasmy.c"
@@ -17,6 +26,7 @@
   "binaries": {
     "x86_64-windows": "lib/mochiwasmy_x86_64.dll"
   },
-  "js_binding": "node_modules/mochiwasmy",
+  "js_binding": "script/index.js",
+  "binary_origin": "prebuilt Zig bridge — E:/wasmyberry/native/mochiwasmy.dll built from E:/wasmyberry/native/mochiwasmy.zig (Zig wasm VM, statically linked: import table is KERNEL32/ntdll/CRT api-sets only, self-contained & portable). native/mochiwasmy.c is the ABI reference wrapper (compiles clean, gcc -fsyntax-only).",
   "engine": "E:/bcf/mochiberry/build_manual/mbjs.exe"
 }

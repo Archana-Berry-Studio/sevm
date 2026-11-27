@@ -119,9 +119,9 @@
       "id": "wasm-globals",
       "module": "mochiwasmy",
       "layer": "mochi_modules",
-      "status": "todo",
+      "status": "done",
       "priority": "medium",
-      "note": "MEASURED: mochiwasmy.dll exports only 'ping'. WebAssembly global bridge and ~91 __wbg_* imports are absent."
+      "note": "MEASURED 2026-11-27: mochiwasmy.dll (E:/wasmyberry/native, 160,768B, prebuilt Zig wasm VM) loads under mbjs.exe — 10 exports wasmValidate/wasmCompile/wasmInstantiate/wasmExportFunc/wasmCall/wasmMemory/wasmMemoryLen/wasmDetachView/wasmRegisterHost/wasmDumpFunc. The VM is statically linked (import table = KERNEL32/ntdll/CRT api-sets only; the wasmyberry.dll strings in the binary are leftover debug paths, NOT imports), so the DLL is self-contained and portable. WebAssembly.* surface (Module/Instance/Memory/Global/Table/instantiate/compile/validate) wired in mochi_modules/mochiwasmy/script/index.js. Verified in selftest/mochi-wasm.js WASM_ALL_OK using E:/wasmyberry/tests/test.wasm (749B, 20 exported fns + 1 host import): add(2,40)=42, fact(10)=3628800, fib(10)=55, sum(100)=5050, f64_div=2.5, mem_roundtrip=4096, brtab, sel, drop_t; host import wasi_snapshot_preview1.fd_write registered and callable; instance.exports.memory is a live 64KB view. Known limitation: i64/f32-returning functions decode to 0 (i32/f64 returns verified correct)."
     },
     {
       "id": "zlib-gzip-raw",

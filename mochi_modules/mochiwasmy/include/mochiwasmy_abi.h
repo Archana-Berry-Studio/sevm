@@ -6,7 +6,16 @@ extern "C" {
 
 /* ABI for mochiwasmy — engine plugin. Entry point: mbjs_init_module().
    Runtime exports (verified via mbjs loadNative): */
-/*   - ping */
+/*   - wasmValidate */
+/*   - wasmCompile */
+/*   - wasmInstantiate */
+/*   - wasmExportFunc */
+/*   - wasmCall */
+/*   - wasmMemory */
+/*   - wasmMemoryLen */
+/*   - wasmDetachView */
+/*   - wasmRegisterHost */
+/*   - wasmDumpFunc */
 #ifdef __cplusplus
 }
 #endif

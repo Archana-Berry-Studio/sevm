@@ -30,11 +30,13 @@ const IMPORT_ENTRY = [...name('__env'), ...name('double'), 0x00, 0x01];
 const FUNC_SEC = [2, 0x00, 0x01];
 
 // function body: <localtypes> <body_size> <code>
-//   localtypes = vec of (count,type) groups; here zero extra locals -> single 0x00 byte.
-//   body_size must cover the localtypes byte PLUS the code, not just the code.
+//   localtypes = vec of (count,type) groups; zero extra locals -> single 0x00 byte.
+//   body_size counts the CODE bytes only (per the wasm binary spec), NOT the
+//   localtypes byte. Getting this wrong yields "section was shorter than
+//   expected size" from any validator.
 const LOCALTYPES = [0x00];
 function body(code) {
-  return [...LOCALTYPES, ...leb(LOCALTYPES.length + code.length), ...code];
+  return [...LOCALTYPES, ...leb(code.length), ...code];
 }
 const CODE_ADD = [0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b]; // local.get 0; local.get 1; i32.add; end
 const CODE_CALL = [0x20, 0x00, 0x10, 0x00, 0x0b];     // local.get 0; call $double(0); end
