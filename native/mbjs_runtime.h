@@ -40,6 +40,40 @@
 #  include <dlfcn.h>
 #endif
 
+/* Resolve one engine symbol from the loaded host process.
+ *
+ * Two batches of engine builds exist on a Windows host:
+ *   - an exe linked with -Wl,--export-all-symbols: the ABI sits in the
+ *     host image itself;
+ *   - a shared engine (mbjs.dll / libmbjs.dll) that the host exe links
+ *     against: the ABI sits in that module, not in the exe.
+ * Try the host image first, then the usual engine module names, so the
+ * same module DLL works against both without being relinked. */
+static void *mbjs_host_symbol(const char *name)
+{
+#ifdef _WIN32
+    static const char *modules[] = {
+        NULL, "mbjs.dll", "libmbjs.dll", "libmochiberry.dll"
+    };
+    size_t i;
+    if (!name)
+        return NULL;
+    for (i = 0; i < sizeof(modules) / sizeof(modules[0]); i++) {
+        HMODULE h = (i == 0) ? GetModuleHandleA(NULL)
+                               : GetModuleHandleA(modules[i]);
+        FARPROC p;
+        if (!h)
+            continue;
+        p = GetProcAddress(h, name);
+        if (p)
+            return (void *)p;
+    }
+    return NULL;
+#else
+    return dlsym(RTLD_DEFAULT, name);
+#endif
+}
+
 typedef struct MBJSRuntime {
     MBJSModuleDef *(*NewCModule)(MBJSContext *, const char *,
                                  MBJSModuleInitFunc *);

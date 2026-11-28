@@ -1,6 +1,19 @@
 #include "mbjs_runtime.h"
 #include "mbjs-jit.h"
-#include "../libdynalib/dynalib.h"
+/* libdynalib lives one directory up in the SEVM checkout; this file is also
+ * copied into mochi_modules/ and .orgfix/ where the layout differs, so accept
+ * every plausible include path before failing. */
+#if defined(__has_include)
+#  if __has_include("../libdynalib/dynalib.h")
+#    include "../libdynalib/dynalib.h"
+#  elif __has_include("dynalib.h")
+#    include "dynalib.h"
+#  else
+#    include <dynalib.h>
+#  endif
+#else
+#  include "../libdynalib/dynalib.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,7 +23,7 @@
 #  include <windows.h>
 #endif
 
-#define MODULE_VERSION "mochijsnative 0.2.0"
+#define MODULE_VERSION "mochijsnative 0.4.0"
 
 static MBJSRuntime rt;
 
@@ -61,6 +74,25 @@ typedef struct {
                          MBJSValue, int, MBJSValue *);
     void (*JitCleanupAll)(MBJSJit *, MBJSContext *);
     MBJSJitStats (*JitStats)(const MBJSJit *);
+    /* v0.4: value / object / property / promise / memory control */
+    int (*IsEqual)(MBJSContext *, MBJSValueConst, MBJSValueConst);
+    MBJSValue (*NewArray)(MBJSContext *);
+    MBJSAtom (*NewAtom)(MBJSContext *, const char *);
+    void (*FreeAtom)(MBJSContext *, MBJSAtom);
+    int (*HasProperty)(MBJSContext *, MBJSValueConst, MBJSAtom);
+    int (*DeleteProperty)(MBJSContext *, MBJSValueConst, MBJSAtom, int);
+    int (*DefinePropertyValueStr)(MBJSContext *, MBJSValueConst, const char *, MBJSValue, int);
+    int (*GetOwnPropertyNames)(MBJSContext *, MBJSPropertyEnum **, uint32_t *, MBJSValueConst, int);
+    void (*FreePropertyEnum)(MBJSContext *, MBJSPropertyEnum *, uint32_t);
+    const char *(*AtomToCStringLen)(MBJSContext *, size_t *, MBJSAtom);
+    int (*ToBool)(MBJSContext *, MBJSValueConst);
+    MBJSValue (*GetPrototype)(MBJSContext *, MBJSValueConst);
+    int (*SetPrototype)(MBJSContext *, MBJSValueConst, MBJSValueConst);
+    MBJSValue (*ThrowRangeError)(MBJSContext *, const char *, ...);
+    MBJSValue (*ThrowReferenceError)(MBJSContext *, const char *, ...);
+    void (*ComputeMemoryUsage)(MBJSRuntime *, MBJSMemoryUsage *);
+    bool (*HasException)(MBJSContext *);
+    MBJSValue (*NewPromiseCapability)(MBJSContext *, MBJSValue *);
 } MochiApi;
 
 static MochiApi api;
@@ -76,6 +108,13 @@ static const char *api_resolve(void)
         p = host_symbol(name);                                                 \
         if (!p) return name;                                                   \
         memcpy(&api.field, &p, sizeof(p));                                     \
+    } while (0)
+/* Optional symbol: a missing one is fine -- the corresponding export degrades
+ * gracefully instead of failing module initialization. */
+#define API_SYM_OPT(field, name)                                                \
+    do {                                                                       \
+        p = host_symbol(name);                                                 \
+        if (p) memcpy(&api.field, &p, sizeof(p));                              \
     } while (0)
 
     API_SYM(NewRuntime, "MBJS_NewRuntime");
@@ -113,15 +152,34 @@ static const char *api_resolve(void)
     API_SYM(StdLoopOnce, "mbjs_std_loop_once");
     API_SYM(StdAwait, "mbjs_std_await");
     API_SYM(StdDumpError, "mbjs_std_dump_error");
-    API_SYM(JitNew, "mbjs_jit_new");
-    API_SYM(JitFree, "mbjs_jit_free");
-    API_SYM(JitBackendName, "mbjs_jit_backend_name");
-    API_SYM(JitLastError, "mbjs_jit_last_error");
-    API_SYM(JitCompile, "mbjs_jit_compile");
-    API_SYM(JitCall, "mbjs_jit_call");
-    API_SYM(JitCleanupAll, "mbjs_jit_cleanup_all");
-    API_SYM(JitStats, "mbjs_jit_stats");
+    API_SYM_OPT(JitNew, "mbjs_jit_new");
+    API_SYM_OPT(JitFree, "mbjs_jit_free");
+    API_SYM_OPT(JitBackendName, "mbjs_jit_backend_name");
+    API_SYM_OPT(JitLastError, "mbjs_jit_last_error");
+    API_SYM_OPT(JitCompile, "mbjs_jit_compile");
+    API_SYM_OPT(JitCall, "mbjs_jit_call");
+    API_SYM_OPT(JitCleanupAll, "mbjs_jit_cleanup_all");
+    API_SYM_OPT(JitStats, "mbjs_jit_stats");
+    API_SYM(IsEqual, "MBJS_IsEqual");
+    API_SYM(NewArray, "MBJS_NewArray");
+    API_SYM(NewAtom, "MBJS_NewAtom");
+    API_SYM(FreeAtom, "MBJS_FreeAtom");
+    API_SYM(HasProperty, "MBJS_HasProperty");
+    API_SYM(DeleteProperty, "MBJS_DeleteProperty");
+    API_SYM(DefinePropertyValueStr, "MBJS_DefinePropertyValueStr");
+    API_SYM(GetOwnPropertyNames, "MBJS_GetOwnPropertyNames");
+    API_SYM(FreePropertyEnum, "MBJS_FreePropertyEnum");
+    API_SYM(AtomToCStringLen, "MBJS_AtomToCStringLen");
+    API_SYM(ToBool, "MBJS_ToBool");
+    API_SYM(GetPrototype, "MBJS_GetPrototype");
+    API_SYM(SetPrototype, "MBJS_SetPrototype");
+    API_SYM(ComputeMemoryUsage, "MBJS_ComputeMemoryUsage");
+    API_SYM(HasException, "MBJS_HasException");
+    API_SYM(ThrowRangeError, "MBJS_ThrowRangeError");
+    API_SYM(ThrowReferenceError, "MBJS_ThrowReferenceError");
+    API_SYM(NewPromiseCapability, "MBJS_NewPromiseCapability");
 
+#undef API_SYM_OPT
 #undef API_SYM
     return NULL;
 }
@@ -247,16 +305,13 @@ static void *host_handle(void)
 #endif
 }
 
+/* Engine symbols are exported by the host image when it is linked with
+ * -Wl,--export-all-symbols. When the engine is instead a shared library
+ * (mbjs.dll / libmbjs.dll) they live there, so fall back to that module.
+ * Shipped via mbjs_runtime.h so every MochiBerry native module benefits. */
 static void *host_symbol(const char *name)
 {
-    void *h = host_handle();
-    if (!h || !name)
-        return NULL;
-#ifdef _WIN32
-    return (void *)GetProcAddress((HMODULE)h, name);
-#else
-    return dlsym(h, name);
-#endif
+    return mbjs_host_symbol(name);
 }
 
 #ifdef _WIN32
@@ -459,6 +514,11 @@ static MBJSValue mn_abi(MBJSContext *ctx, MBJSValueConst this_val,
         "\"trampoline\":\"uint64_t stub(const uint64_t args[16])\","
         "\"float_return\":\"bits in uint64_t\","
         "\"deep\":{\"runtime\":true,\"context\":true,\"eval\":true,"
+        "\"values\":true,\"properties\":true,\"call\":true,"
+        "\"json\":true,\"exceptions\":true,\"promise\":true,"
+        "\"memory\":true,\"export_enumeration\":true,\"jit\":true},"
+        "\"module_version\":\"0.4.0\","
+        "\"deep_legacy\":{\"runtime\":true,\"context\":true,\"eval\":true,"
         "\"values\":true,\"properties\":true,\"call\":true,"
         "\"json\":true,\"exceptions\":true,\"jit\":true,"
         "\"export_enumeration\":true},"
@@ -1187,7 +1247,10 @@ static MBJSValue mn_set_prop(MBJSContext *ctx, MBJSValueConst this_val,
     key = arg_cstr(ctx, argv[2]);
     if (!key)
         return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
-    r = api.SetPropertyStr(g_ctxs[obj->ctxId].ctx, obj->value, key, val->value);
+    /* SetPropertyStr/DefinePropertyValueStr CONSUME their value argument, so
+     * hand them a duplicate and keep the caller's slot valid. */
+    r = api.SetPropertyStr(g_ctxs[obj->ctxId].ctx, obj->value, key,
+                           api.DupValue(g_ctxs[obj->ctxId].ctx, val->value));
     rt.FreeCString(ctx, key);
     return rt.NewBigUint64(ctx, (uint64_t)(int64_t)r);
 }
@@ -1481,7 +1544,402 @@ static MBJSValue mn_jit_free(MBJSContext *ctx, MBJSValueConst this_val,
     return MBJS_UNDEFINED;
 }
 
-#define MN_TAB_LEN 45
+/* ------------------------------------------------------------------ *
+ * v0.4 engine-control additions (value / object / property / promise /
+ * memory introspection) — "ngendaliin engine" surface.
+ * ------------------------------------------------------------------ */
+
+static CtxSlot *value_owner(ValSlot *v)
+{
+    if (!v || v->ctxId < 0 || v->ctxId >= MAX_CTXS || !g_ctxs[v->ctxId].used) {
+        set_error("value has no live context");
+        return NULL;
+    }
+    return &g_ctxs[v->ctxId];
+}
+
+static MBJSValue mn_value_dup(MBJSContext *ctx, MBJSValueConst this_val,
+                              int argc, MBJSValueConst *argv)
+{
+    ValSlot *v;
+    CtxSlot *c;
+    (void)this_val;
+    if (argc < 1 || !(v = value_slot(ctx, argv[0])) || !(c = value_owner(v)))
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    return rt.NewBigUint64(ctx, (uint64_t)(int64_t)value_store(
+        v->ctxId, api.DupValue(c->ctx, v->value)));
+}
+
+static MBJSValue mn_value_to_bool(MBJSContext *ctx, MBJSValueConst this_val,
+                                  int argc, MBJSValueConst *argv)
+{
+    ValSlot *v;
+    CtxSlot *c;
+    int b;
+    (void)this_val;
+    if (argc < 1 || !(v = value_slot(ctx, argv[0])) || !(c = value_owner(v)))
+        return rt.NewBigUint64(ctx, 0);
+    b = api.ToBool(c->ctx, v->value);
+    return rt.NewBigUint64(ctx, (uint64_t)(b > 0 ? 1 : 0));
+}
+
+static MBJSValue mn_value_eq(MBJSContext *ctx, MBJSValueConst this_val,
+                             int argc, MBJSValueConst *argv)
+{
+    ValSlot *a;
+    ValSlot *b;
+    CtxSlot *c;
+    int r;
+    (void)this_val;
+    if (argc < 2 || !(a = value_slot(ctx, argv[0])) || !(b = value_slot(ctx, argv[1])) ||
+        !(c = value_owner(a)))
+        return rt.NewBigUint64(ctx, 0);
+    if (a->ctxId != b->ctxId) {
+        set_error("valueEq: values belong to different contexts");
+        return rt.NewBigUint64(ctx, 0);
+    }
+    r = api.IsEqual(c->ctx, a->value, b->value);
+    return rt.NewBigUint64(ctx, (uint64_t)(r > 0 ? 1 : 0));
+}
+
+static MBJSValue mn_value_is_error(MBJSContext *ctx, MBJSValueConst this_val,
+                                   int argc, MBJSValueConst *argv)
+{
+    ValSlot *v;
+    (void)this_val;
+    if (argc < 1 || !(v = value_slot(ctx, argv[0])))
+        return rt.NewBigUint64(ctx, 0);
+    return rt.NewBigUint64(ctx, api.IsError(v->value) ? 1 : 0);
+}
+
+static MBJSValue mn_value_is_function(MBJSContext *ctx, MBJSValueConst this_val,
+                                      int argc, MBJSValueConst *argv)
+{
+    ValSlot *v;
+    CtxSlot *c;
+    (void)this_val;
+    if (argc < 1 || !(v = value_slot(ctx, argv[0])) || !(c = value_owner(v)))
+        return rt.NewBigUint64(ctx, 0);
+    return rt.NewBigUint64(ctx, api.IsFunction(c->ctx, v->value) ? 1 : 0);
+}
+
+static MBJSValue mn_new_object(MBJSContext *ctx, MBJSValueConst this_val,
+                               int argc, MBJSValueConst *argv)
+{
+    CtxSlot *c;
+    (void)this_val;
+    if (argc < 1 || !(c = ctx_slot(ctx, argv[0])))
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    return rt.NewBigUint64(ctx, (uint64_t)(int64_t)value_store(
+        (int)(int64_t)(uintptr_t)(c - g_ctxs), api.NewObject(c->ctx)));
+}
+
+static MBJSValue mn_new_array(MBJSContext *ctx, MBJSValueConst this_val,
+                              int argc, MBJSValueConst *argv)
+{
+    CtxSlot *c;
+    (void)this_val;
+    if (argc < 1 || !(c = ctx_slot(ctx, argv[0])))
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    return rt.NewBigUint64(ctx, (uint64_t)(int64_t)value_store(
+        (int)(int64_t)(uintptr_t)(c - g_ctxs), api.NewArray(c->ctx)));
+}
+
+static MBJSValue mn_prop_define(MBJSContext *ctx, MBJSValueConst this_val,
+                                int argc, MBJSValueConst *argv)
+{
+    ValSlot *obj;
+    ValSlot *val;
+    CtxSlot *c;
+    const char *key;
+    int flags = MBJS_PROP_C_W_E;
+    int r;
+    (void)this_val;
+    if (argc < 3 || !(obj = value_slot(ctx, argv[0])) ||
+        !(val = value_slot(ctx, argv[2])) || !(c = value_owner(obj)))
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    key = arg_cstr(ctx, argv[1]);
+    if (!key)
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    if (argc > 3) arg_int(ctx, argv[3], &flags);
+    r = api.DefinePropertyValueStr(c->ctx, obj->value, key,
+                                   api.DupValue(c->ctx, val->value), flags);
+    rt.FreeCString(ctx, key);
+    return rt.NewBigUint64(ctx, (uint64_t)(int64_t)(r > 0 ? 1 : r));
+}
+
+static MBJSValue mn_prop_has(MBJSContext *ctx, MBJSValueConst this_val,
+                             int argc, MBJSValueConst *argv)
+{
+    ValSlot *obj;
+    CtxSlot *c;
+    const char *key;
+    MBJSAtom atom;
+    int r;
+    (void)this_val;
+    if (argc < 2 || !(obj = value_slot(ctx, argv[0])) || !(c = value_owner(obj)))
+        return rt.NewBigUint64(ctx, 0);
+    key = arg_cstr(ctx, argv[1]);
+    if (!key)
+        return rt.NewBigUint64(ctx, 0);
+    atom = api.NewAtom(c->ctx, key);
+    rt.FreeCString(ctx, key);
+    r = api.HasProperty(c->ctx, obj->value, atom);
+    api.FreeAtom(c->ctx, atom);
+    return rt.NewBigUint64(ctx, (uint64_t)(int64_t)r);
+}
+
+static MBJSValue mn_prop_delete(MBJSContext *ctx, MBJSValueConst this_val,
+                                int argc, MBJSValueConst *argv)
+{
+    ValSlot *obj;
+    CtxSlot *c;
+    const char *key;
+    MBJSAtom atom;
+    int r;
+    (void)this_val;
+    if (argc < 2 || !(obj = value_slot(ctx, argv[0])) || !(c = value_owner(obj)))
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    key = arg_cstr(ctx, argv[1]);
+    if (!key)
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    atom = api.NewAtom(c->ctx, key);
+    rt.FreeCString(ctx, key);
+    r = api.DeleteProperty(c->ctx, obj->value, atom, 0);
+    api.FreeAtom(c->ctx, atom);
+    return rt.NewBigUint64(ctx, (uint64_t)(int64_t)(r > 0 ? 1 : r));
+}
+
+static MBJSValue mn_prop_keys(MBJSContext *ctx, MBJSValueConst this_val,
+                              int argc, MBJSValueConst *argv)
+{
+    ValSlot *obj;
+    CtxSlot *c;
+    MBJSPropertyEnum *tab = NULL;
+    uint32_t len = 0, i;
+    char *buf;
+    size_t cap, used = 0;
+    MBJSValue out;
+    (void)this_val;
+    if (argc < 1 || !(obj = value_slot(ctx, argv[0])) || !(c = value_owner(obj)))
+        return cstr_result(ctx, "[]");
+    if (api.GetOwnPropertyNames(c->ctx, &tab, &len, obj->value,
+                                MBJS_GPN_STRING_MASK) < 0)
+        return cstr_result(ctx, "[]");
+    cap = 64 + (size_t)len * 96;
+    buf = (char *)malloc(cap);
+    if (!buf) {
+        api.FreePropertyEnum(c->ctx, tab, len);
+        return cstr_result(ctx, "[]");
+    }
+    used += (size_t)snprintf(buf + used, cap - used, "[");
+    for (i = 0; i < len; i++) {
+        const char *name = api.AtomToCStringLen(c->ctx, NULL, tab[i].atom);
+        if (name) {
+            used += (size_t)snprintf(buf + used, cap - used, "%s\"%s\"",
+                                     i ? "," : "", name);
+            rt.FreeCString(c->ctx, name);
+        } else {
+            used += (size_t)snprintf(buf + used, cap - used, "%s\"\"", i ? "," : "");
+        }
+    }
+    used += (size_t)snprintf(buf + used, cap - used, "]");
+    api.FreePropertyEnum(c->ctx, tab, len);
+    out = rt.NewStringLen(ctx, buf, used);
+    free(buf);
+    return out;
+}
+
+static MBJSValue mn_proto_get(MBJSContext *ctx, MBJSValueConst this_val,
+                              int argc, MBJSValueConst *argv)
+{
+    ValSlot *v;
+    CtxSlot *c;
+    (void)this_val;
+    if (argc < 1 || !(v = value_slot(ctx, argv[0])) || !(c = value_owner(v)))
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    return rt.NewBigUint64(ctx, (uint64_t)(int64_t)value_store(
+        v->ctxId, api.GetPrototype(c->ctx, v->value)));
+}
+
+static MBJSValue mn_proto_set(MBJSContext *ctx, MBJSValueConst this_val,
+                              int argc, MBJSValueConst *argv)
+{
+    ValSlot *obj;
+    ValSlot *proto;
+    CtxSlot *c;
+    int r;
+    (void)this_val;
+    if (argc < 2 || !(obj = value_slot(ctx, argv[0])) ||
+        !(proto = value_slot(ctx, argv[1])) || !(c = value_owner(obj)))
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    if (obj->ctxId != proto->ctxId) {
+        set_error("protoSet: values belong to different contexts");
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    }
+    r = api.SetPrototype(c->ctx, obj->value, proto->value);
+    return rt.NewBigUint64(ctx, (uint64_t)(int64_t)r);
+}
+
+static MBJSValue mn_throw_error(MBJSContext *ctx, MBJSValueConst this_val,
+                                int argc, MBJSValueConst *argv)
+{
+    CtxSlot *c;
+    const char *kind;
+    const char *msg;
+    (void)this_val;
+    if (argc < 1 || !(c = ctx_slot(ctx, argv[0])))
+        return MBJS_UNDEFINED;
+    kind = argc > 1 ? arg_cstr(ctx, argv[1]) : NULL;
+    msg = argc > 2 ? arg_cstr(ctx, argv[2]) : NULL;
+    if (kind && strcmp(kind, "range") == 0)
+        api.ThrowRangeError(c->ctx, "%s", msg ? msg : "error");
+    else if (kind && strcmp(kind, "reference") == 0)
+        api.ThrowReferenceError(c->ctx, "%s", msg ? msg : "error");
+    else if (kind && strcmp(kind, "syntax") == 0)
+        rt.ThrowTypeError(c->ctx, "%s", msg ? msg : "error");
+    else
+        rt.ThrowTypeError(c->ctx, "%s", msg ? msg : "error");
+    if (kind) rt.FreeCString(ctx, kind);
+    if (msg) rt.FreeCString(ctx, msg);
+    return MBJS_UNDEFINED;
+}
+
+static MBJSValue mn_exception_has(MBJSContext *ctx, MBJSValueConst this_val,
+                                  int argc, MBJSValueConst *argv)
+{
+    CtxSlot *c;
+    (void)this_val;
+    if (argc < 1 || !(c = ctx_slot(ctx, argv[0])))
+        return rt.NewBigUint64(ctx, 0);
+    return rt.NewBigUint64(ctx, api.HasException(c->ctx) ? 1 : 0);
+}
+
+static MBJSValue mn_memory_usage(MBJSContext *ctx, MBJSValueConst this_val,
+                                 int argc, MBJSValueConst *argv)
+{
+    RtSlot *r;
+    MBJSMemoryUsage s;
+    char buf[2048];
+    int n;
+    (void)this_val;
+    if (argc < 1 || !(r = rt_slot(ctx, argv[0])))
+        return cstr_result(ctx, "{}");
+    memset(&s, 0, sizeof(s));
+    api.ComputeMemoryUsage(r->rt, &s);
+    n = snprintf(buf, sizeof(buf),
+        "{\"malloc_size\":%lld,\"malloc_limit\":%lld,\"memory_used_size\":%lld,"
+        "\"malloc_count\":%lld,\"memory_used_count\":%lld,"
+        "\"atom_count\":%lld,\"atom_size\":%lld,"
+        "\"str_count\":%lld,\"str_size\":%lld,"
+        "\"obj_count\":%lld,\"obj_size\":%lld,"
+        "\"prop_count\":%lld,\"prop_size\":%lld,"
+        "\"shape_count\":%lld,\"shape_size\":%lld,"
+        "\"func_count\":%lld,\"func_size\":%lld,\"func_code_size\":%lld,"
+        "\"c_func_count\":%lld,\"array_count\":%lld,"
+        "\"fast_array_count\":%lld,\"fast_array_elements\":%lld}",
+        (long long)s.malloc_size, (long long)s.malloc_limit,
+        (long long)s.memory_used_size, (long long)s.malloc_count,
+        (long long)s.memory_used_count, (long long)s.atom_count,
+        (long long)s.atom_size, (long long)s.str_count, (long long)s.str_size,
+        (long long)s.obj_count, (long long)s.obj_size,
+        (long long)s.prop_count, (long long)s.prop_size,
+        (long long)s.shape_count, (long long)s.shape_size,
+        (long long)s.mbjs_func_count, (long long)s.mbjs_func_size,
+        (long long)s.mbjs_func_code_size, (long long)s.c_func_count,
+        (long long)s.array_count, (long long)s.fast_array_count,
+        (long long)s.fast_array_elements);
+    return rt.NewStringLen(ctx, buf, (size_t)n);
+}
+
+static MBJSValue mn_bigint_new(MBJSContext *ctx, MBJSValueConst this_val,
+                               int argc, MBJSValueConst *argv)
+{
+    CtxSlot *c;
+    uint64_t bits = 0;
+    (void)this_val;
+    if (argc < 2 || !(c = ctx_slot(ctx, argv[0])))
+        return rt.NewBigUint64(ctx, (uint64_t)(int64_t)-1);
+    if (argc > 2) arg_u64(ctx, argv[2], &bits);
+    return rt.NewBigUint64(ctx, (uint64_t)(int64_t)value_store(
+        (int)(int64_t)(uintptr_t)(c - g_ctxs), rt.NewBigUint64(c->ctx, bits)));
+}
+
+static MBJSValue mn_stringify(MBJSContext *ctx, MBJSValueConst this_val,
+                              int argc, MBJSValueConst *argv)
+{
+    CtxSlot *c;
+    ValSlot *v;
+    MBJSValue space = MBJS_UNDEFINED;
+    MBJSValue r;
+    const char *s;
+    (void)this_val;
+    if (argc < 2 || !(c = ctx_slot(ctx, argv[0])) || !(v = value_slot(ctx, argv[1])))
+        return cstr_result(ctx, "null");
+    if (argc > 2 && MBJS_IsNumber(argv[2])) {
+        double d = 0;
+        rt.ToFloat64(ctx, &d, argv[2]);
+        if (d >= 0) space = MBJS_NewInt32(c->ctx, (int32_t)d);
+    }
+    r = api.JSONStringify(c->ctx, v->value, MBJS_UNDEFINED, space);
+    if (MBJS_IsException(r)) {
+        api.FreeValue(c->ctx, r);
+        return cstr_result(ctx, "null");
+    }
+    s = rt.ToCStringLen(c->ctx, NULL, r);
+    {
+        MBJSValue out = cstr_result(ctx, s);
+        if (s) rt.FreeCString(c->ctx, s);
+        api.FreeValue(c->ctx, r);
+        return out;
+    }
+}
+
+static MBJSValue mn_handle_stats(MBJSContext *ctx, MBJSValueConst this_val,
+                                 int argc, MBJSValueConst *argv)
+{
+    int i, c_rts = 0, c_ctxs = 0, c_vals = 0, c_binds = 0, c_jits = 0, c_jitfns = 0;
+    char buf[512];
+    int n;
+    (void)this_val; (void)argc; (void)argv;
+    for (i = 0; i < MAX_RTS; i++) c_rts += g_rts[i].used;
+    for (i = 0; i < MAX_CTXS; i++) c_ctxs += g_ctxs[i].used;
+    for (i = 0; i < MAX_VALUES; i++) c_vals += g_values[i].used;
+    for (i = 0; i < MAX_BINDS; i++) c_binds += g_binds[i].used;
+    for (i = 0; i < MAX_JITS; i++) c_jits += g_jits[i].used;
+    for (i = 0; i < MAX_JITFNS; i++) c_jitfns += g_jitfns[i].used;
+    n = snprintf(buf, sizeof(buf),
+        "{\"runtimes\":%d,\"contexts\":%d,\"values\":%d,\"binds\":%d,"
+        "\"jits\":%d,\"jitfns\":%d,\"caps\":{\"runtimes\":%d,\"contexts\":%d,"
+        "\"values\":%d,\"binds\":%d,\"jits\":%d,\"jitfns\":%d}}",
+        c_rts, c_ctxs, c_vals, c_binds, c_jits, c_jitfns,
+        MAX_RTS, MAX_CTXS, MAX_VALUES, MAX_BINDS, MAX_JITS, MAX_JITFNS);
+    return rt.NewStringLen(ctx, buf, (size_t)n);
+}
+
+static MBJSValue mn_promise_new(MBJSContext *ctx, MBJSValueConst this_val,
+                                int argc, MBJSValueConst *argv)
+{
+    CtxSlot *c;
+    MBJSValue funcs[2];
+    MBJSValue promise;
+    char buf[256];
+    int n, pId, rId, jId;
+    (void)this_val;
+    if (argc < 1 || !(c = ctx_slot(ctx, argv[0])))
+        return cstr_result(ctx, "{\"promise\":-1}");
+    promise = api.NewPromiseCapability(c->ctx, funcs);
+    if (MBJS_IsException(promise))
+        return cstr_result(ctx, "{\"promise\":-1}");
+    pId = value_store((int)(int64_t)(uintptr_t)(c - g_ctxs), promise);
+    rId = value_store((int)(int64_t)(uintptr_t)(c - g_ctxs), funcs[0]);
+    jId = value_store((int)(int64_t)(uintptr_t)(c - g_ctxs), funcs[1]);
+    n = snprintf(buf, sizeof(buf),
+        "{\"promise\":%d,\"resolve\":%d,\"reject\":%d}", pId, rId, jId);
+    return rt.NewStringLen(ctx, buf, (size_t)n);
+}
+
+#define MN_TAB_LEN 65
 
 static const MBJSCFunctionListEntry mn_tab[MN_TAB_LEN] = {
     MBJS_CFUNC_DEF("version", 0, mn_version),
@@ -1528,7 +1986,27 @@ static const MBJSCFunctionListEntry mn_tab[MN_TAB_LEN] = {
     MBJS_CFUNC_DEF("jitInvoke", 18, mn_jit_invoke),
     MBJS_CFUNC_DEF("jitCall", 21, mn_jit_call),
     MBJS_CFUNC_DEF("jitCleanup", 2, mn_jit_cleanup),
-    MBJS_CFUNC_DEF("jitFree", 1, mn_jit_free)
+    MBJS_CFUNC_DEF("jitFree", 1, mn_jit_free),
+    MBJS_CFUNC_DEF("valueDup", 1, mn_value_dup),
+    MBJS_CFUNC_DEF("valueToBool", 1, mn_value_to_bool),
+    MBJS_CFUNC_DEF("valueEq", 2, mn_value_eq),
+    MBJS_CFUNC_DEF("valueIsError", 1, mn_value_is_error),
+    MBJS_CFUNC_DEF("valueIsFunction", 1, mn_value_is_function),
+    MBJS_CFUNC_DEF("newObject", 1, mn_new_object),
+    MBJS_CFUNC_DEF("newArray", 1, mn_new_array),
+    MBJS_CFUNC_DEF("propDefine", 4, mn_prop_define),
+    MBJS_CFUNC_DEF("propHas", 2, mn_prop_has),
+    MBJS_CFUNC_DEF("propDelete", 2, mn_prop_delete),
+    MBJS_CFUNC_DEF("propKeys", 1, mn_prop_keys),
+    MBJS_CFUNC_DEF("protoGet", 1, mn_proto_get),
+    MBJS_CFUNC_DEF("protoSet", 2, mn_proto_set),
+    MBJS_CFUNC_DEF("throwError", 3, mn_throw_error),
+    MBJS_CFUNC_DEF("exceptionHas", 1, mn_exception_has),
+    MBJS_CFUNC_DEF("memoryUsage", 1, mn_memory_usage),
+    MBJS_CFUNC_DEF("bigintNew", 3, mn_bigint_new),
+    MBJS_CFUNC_DEF("stringify", 3, mn_stringify),
+    MBJS_CFUNC_DEF("handleStats", 0, mn_handle_stats),
+    MBJS_CFUNC_DEF("promiseNew", 1, mn_promise_new)
 };
 
 static int mn_mod_init(MBJSContext *ctx, MBJSModuleDef *m)
