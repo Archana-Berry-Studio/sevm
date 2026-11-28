@@ -137,8 +137,23 @@ static MBJSValue net_httpRead(MBJSContext *ctx, MBJSValueConst this_val,
     if (!buf)
         return MBJS_UNDEFINED;
     n = recv(s, buf, cap, 0);
-    if (n <= 0) {
+    if (n == 0) {
+        /* the peer shut down cleanly */
         free(buf);
+        return MBJS_UNDEFINED;
+    }
+    if (n < 0) {
+        /* A connection accepted from a NON-BLOCKING listener is itself
+         * non-blocking, so "no data has arrived yet" comes back as
+         * WSAEWOULDBLOCK. Reporting that as undefined made the JS serve loop
+         * believe the request was over, closed the socket with unread request
+         * bytes still queued, and Windows answered with RST — the client saw
+         * "Connection was aborted" instead of a response (measured: ~20% of
+         * short requests). Report -2 so JS can wait and retry. */
+        int err = WSAGetLastError();
+        free(buf);
+        if (err == WSAEWOULDBLOCK)
+            return MBJS_NewInt32(ctx, -2);
         return MBJS_UNDEFINED;
     }
     {
@@ -155,7 +170,7 @@ static MBJSValue net_httpWrite(MBJSContext *ctx, MBJSValueConst this_val,
     SOCKET s;
     const char *data;
     size_t len, sent = 0;
-    int rc;
+    int rc, waited = 0;
 
     (void)this_val;
     if (argc < 2 || get_fd(argv[0], &s) < 0)
@@ -167,11 +182,23 @@ static MBJSValue net_httpWrite(MBJSContext *ctx, MBJSValueConst this_val,
 
     while (sent < len) {
         rc = send(s, data + sent, (int)(len - sent), 0);
-        if (rc <= 0) {
+        if (rc > 0) {
+            sent += (size_t)rc;
+            continue;
+        }
+        if (WSAGetLastError() != WSAEWOULDBLOCK) {
+            /* hard error: return what we managed to send */
             rt.FreeCString(ctx, data);
             return MBJS_NewInt32(ctx, (int)sent);
         }
-        sent += (size_t)rc;
+        /* The send buffer is full (non-blocking socket). Waiting here beats
+         * truncating the response: a short response that comes back short
+         * makes the client abort the connection. */
+        Sleep(1);
+        if (++waited > 2000) {
+            rt.FreeCString(ctx, data);
+            return MBJS_NewInt32(ctx, (int)sent);
+        }
     }
     rt.FreeCString(ctx, data);
     return MBJS_NewFloat64(ctx, (double)sent);
