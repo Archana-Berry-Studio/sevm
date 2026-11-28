@@ -34,7 +34,7 @@ BRANCH = "main"
 MODS = ["mochicrypto", "mochifs", "mochijsnative", "mochinode",
         "mochinode_dynalib", "mochinode_net", "mochinode_sqlite",
         "mochiossil", "mochisandbox", "mochiwasmy", "mochiws",
-        "mochiyuva", "mochizlib"]
+        "mochiyuva", "mochizlib", "cmochicode"]
 
 NM_HDR = """# {name} (node_modules) — JavaScript face
 
@@ -158,6 +158,12 @@ GIT = git_id()
 def load_json(path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def write(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
 
 
 def dump_json(path, obj):
@@ -287,6 +293,46 @@ extern "C" {{
             dump_json(mm_manifest_path, mm)
             added.append("mochi_modules/manifest.json (headers list)")
 
+    # 6) docs/ + mochiberry/ — the two extras every module package carries
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import create_org_mod as com
+    meta = {"version": version, "arch": "x86_64",
+            "description": desc, "status": "verified",
+            "exports": exports,
+            "doc_exports": [(e, "runtime export (see the module README)")
+                             for e in exports],
+            "syslibs": "the Windows libraries the module links against",
+            "cc_libs": "", "cmake_libs": "", "link_libs": []}
+    docs = os.path.join(repo, "docs")
+    doc_files = [("docs/01_architecture.md", com.doc_arch(mod, meta)),
+                 ("docs/02_abi_reference.md", com.doc_abi(mod, meta)),
+                 ("docs/03_sandbox_security.md", com.doc_sec(mod, meta))]
+    for rel, body in doc_files:
+        target = os.path.join(repo, *rel.split("/"))
+        if not os.path.isfile(target):
+            write(target, body)
+            added.append(rel)
+    brand = os.path.join(repo, "mochiberry", "svg", f"{mod}-architecture.svg")
+    if not os.path.isfile(brand):
+        write(brand, com.svg(mod, meta))
+        added.append(f"mochiberry/svg/{mod}-architecture.svg")
+
+    # 7) some repos whitelist node_modules/ file-by-file; make sure the
+    #    markers we just added are tracked instead of silently ignored
+    gi = os.path.join(repo, "node_modules", ".gitignore")
+    if os.path.isfile(gi):
+        text = open(gi, encoding="utf-8").read()
+        extra = ""
+        if "!" not in text and "package.json" not in text:
+            extra = "!package.json\n"
+        for entry in ("!package.json", "!README.md"):
+            if entry not in text:
+                extra += entry + "\n"
+        if extra:
+            with open(gi, "w", encoding="utf-8", newline="\n") as f:
+                f.write(text.rstrip("\n") + "\n\n" + extra)
+            added.append("node_modules/.gitignore (un-ignore markers)")
+
     # ---- verify the required layout is now complete ----
     required = [
         "node_modules/package.json", "node_modules/README.md",
@@ -300,7 +346,8 @@ extern "C" {{
     has_src = os.path.isdir(os.path.join(repo, "mochi_modules", "src")) and any(
         f.endswith(".c") for f in os.listdir(os.path.join(repo, "mochi_modules", "src")))
     has_docs = os.path.isdir(os.path.join(repo, "docs")) and bool(os.listdir(os.path.join(repo, "docs")))
-    has_brand = os.path.isdir(os.path.join(repo, "mochiberry"))
+    has_brand = os.path.isdir(os.path.join(repo, "mochiberry")) and bool(
+        os.listdir(os.path.join(repo, "mochiberry")))
 
     state = "OK" if not (missing or not (has_bin or has_src) or not has_docs or not has_brand) else "INCOMPLETE"
     if missing or not has_bin or not has_src or not has_docs or not has_brand:
@@ -308,6 +355,9 @@ extern "C" {{
 
     if push and state == "OK":
         sh(GIT + ["add", "-A"], cwd=repo)
+        # force: a node_modules/.gitignore can legitimately whitelist files
+        sh(GIT + ["add", "-f", "node_modules", "mochi_modules", "docs",
+                  "mochiberry"], cwd=repo, check=False)
         st = sh(["git", "status", "--short"], cwd=repo)
         if st:
             sh(GIT + ["commit", "-q", "-m",

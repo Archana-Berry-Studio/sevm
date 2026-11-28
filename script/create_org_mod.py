@@ -363,10 +363,23 @@ def build_repo(mod, template, meta, push=False):
         raise RuntimeError(f"no canonical {src}")
     repo = os.path.join(STAGE, mod)
     safe_rmtree(repo)
-    os.makedirs(STAGE, exist_ok=True)
-    sh(["git", "clone", "-q", "--depth", "1", "-b", BRANCH,
-        f"https://github.com/{ORG}/{template}.git", repo])
-    branch = sh(["git", "-C", repo, "rev-parse", "--abbrev-ref", "HEAD"])
+    # if a locked leftover survived, take a fresh path instead of reusing a
+    # directory that still has the previous run's .git and remotes
+    if os.path.isdir(repo):
+        for i in range(20):
+            alt = f"{repo}-{i}"
+            if not os.path.exists(alt):
+                repo = alt
+                break
+    os.makedirs(repo, exist_ok=True)
+    # git init, not clone: every file below is written from canonical, so a
+    # template repo contributes nothing except its history — and pushing a
+    # repo cloned with --depth 1 fails on the remote with "did not receive
+    # expected object <parent sha>". A single clean commit has no parent.
+    sh(GIT + ["init", "-q", "-b", BRANCH], cwd=repo)
+    sh(["git", "remote", "add", "origin", f"https://github.com/{ORG}/{mod}.git"],
+       cwd=repo, check=False)
+    branch = BRANCH
 
     # wipe everything the template shipped except .git, then rebuild from canonical
     for name in os.listdir(repo):
