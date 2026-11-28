@@ -1,5 +1,5 @@
 /*
- * examples/sevm-app/public/app.js — Vue 3 notes app (offline-first).
+ * examples/sevm-notes/public/app.js — Vue 3 notes app (offline-first).
  *
  * Reads are network-first through the service worker (cached fallback), so a
  * reload with the server down still renders the last-known notes. Writes that

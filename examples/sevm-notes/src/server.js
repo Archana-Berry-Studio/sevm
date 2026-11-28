@@ -1,5 +1,5 @@
 /*
- * examples/sevm-app/src/server.js — Offline-First Notes PWA.
+ * examples/sevm-notes/src/server.js — Offline-First Notes PWA.
  *
  * Serves:
  *   GET   /                     -> Vue 3 notes SPA (static build, client-side)
@@ -7,7 +7,9 @@
  *   GET   /notes.css            -> app styles
  *   GET   /manifest.webmanifest -> PWA manifest
  *   GET   /sw.js                -> service worker
- *   GET   /icon-192.png|512.png -> PWA icons
+ *   GET   /icon.svg               -> PWA icon (SVG: fs.readFileSync is
+ *                                    lossy for binary, so PNG icons cannot
+ *                                    be served byte-exact by this engine)
  *   GET   /vue.global.prod.js   -> Vue bundle (vendored, offline)
  *   GET   /api/health           -> { ok, engine, sqlite, requested }
  *   GET   /api/notes?q=&pinned= -> { count, notes[] }
@@ -82,6 +84,7 @@ async function main() {
     serveStatic('manifest.webmanifest', 'application/manifest+json');
     serveStatic('sw.js', 'application/javascript');
     serveStatic('vue.global.prod.js', 'application/javascript');
+    serveStatic('icon.svg', 'image/svg+xml');
     serveStatic('icon-192.png', 'image/png');
     serveStatic('icon-512.png', 'image/png');
 
