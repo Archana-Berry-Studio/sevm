@@ -28,3 +28,9 @@ __pycache__/
 # engine build output (not source)
 build_ex/
 .modrepos/
+
+# org staging areas (scratch clones of org repos, 8-15 MB each)
+.orgfix/
+.newmods/
+.vendorfix/
+.stale-*/
