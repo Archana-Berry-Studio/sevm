@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 # Run the MochiBerry SEVM self-test suite with a given engine binary.
-# usage: script/regress.sh <engine.exe>
-ENGINE="${1:-E:/bcf/mochiberry/build_manual/mbjs.exe}"
+# usage: script/regress.sh [engine.exe]
+#
+# With no argument it picks an engine that can actually load the native
+# plugins (the canonical build path is rewritten by other processes on this
+# host, and a build without -Wl,--export-all-symbols cannot resolve MBJS_*).
+ENGINE="${1:-}"
 cd "$(dirname "$0")/.." || exit 1
-TESTS="mochi-core mochi-runtime mochi-shims mochicrypto_xcheck mochi-dynalib
-       mochi-express mochi-express2 mochi-http-post mochijsnative
-       mochi-net-connect mochi-process mochisandbox mochisandbox_memlimit
-       mochi-sqlite mochi-tls mochi-tls-socket mochi-wasm mochi-worker mochiws"
+if [ -z "$ENGINE" ]; then
+  ENGINE=$(bash script/pick_engine.sh 2>/dev/null)
+  [ -n "$ENGINE" ] || { echo "no working engine found" >&2; exit 2; }
+fi
+TESTS="mochi-core mochi-runtime mochi-shims plugin-load mochicrypto_xcheck
+       mochi-dynalib mochi-express mochi-express2 mochi-http-post
+       mochijsnative mochi-net-connect mochi-process mochisandbox
+       mochisandbox_memlimit mochi-sqlite mochi-tls mochi-tls-socket
+       mochi-wasm mochi-worker mochiws"
 pass=0; fail=0; failed=""
 for t in $TESTS; do
   out=$(timeout 60 "$ENGINE" -m "selftest/$t.js" 2>&1)
